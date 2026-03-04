@@ -5,85 +5,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>NAZE AR Demo (Three.js)</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
-      touch-action: none;
-    }
-    #container {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-      background: #000;
-    }
-    /* three.js canvas */
-    #container canvas {
-      position: fixed !important;
-      inset: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      display: block;
-    }
-    .top {
-      position: fixed; left: 0; right: 0; top: 0;
-      padding: 10px 12px;
-      font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      color: #fff;
-      background: rgba(0,0,0,.35);
-      text-align: center;
-      z-index: 10;
-      pointer-events: none;
-    }
-    .hint {
-      position: fixed; left: 0; right: 0; bottom: 0;
-      padding: 12px 14px;
-      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      color: #fff;
-      background: rgba(0,0,0,.55);
-      text-align: center;
-      z-index: 10;
-    }
-    .tap {
-      position: fixed;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      padding: 12px 14px;
-      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      color: #fff;
-      background: rgba(0,0,0,.6);
-      border-radius: 10px;
-      z-index: 20;
-      user-select: none;
-    }
-    .hidden { display: none; }
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#000; }
+    #container { position:fixed; inset:0; width:100vw; height:100vh; background:#000; }
+    #container canvas { position:fixed !important; inset:0 !important; width:100vw !important; height:100vh !important; display:block; }
+    .top{ position:fixed; left:0; right:0; top:0; padding:10px 12px; font:16px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial; color:#fff; background:rgba(0,0,0,.35); text-align:center; z-index:10; pointer-events:none;}
+    .hint{ position:fixed; left:0; right:0; bottom:0; padding:12px 14px; font:14px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial; color:#fff; background:rgba(0,0,0,.55); text-align:center; z-index:10;}
+    .tap{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); padding:12px 14px; font:14px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial; color:#fff; background:rgba(0,0,0,.6); border-radius:10px; z-index:20; user-select:none;}
+    .hidden{ display:none; }
   </style>
 </head>
 
 <body>
   <div class="top">NAZE AR Demo</div>
-  <div class="hint">カメラ許可 → アクキーを映すと「ポン」→動画が始まります（最初に一度タップ）</div>
+  <div class="hint">カメラ許可 → アクキーを映すと「ポン」→動画開始（最初に一度タップ）</div>
   <div id="tap" class="tap">画面を1回タップして開始</div>
   <div id="container"></div>
 
-  <!-- Three.js + MindAR(three) -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <!-- Three.js (r150: MindAR相性対策) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+  <!-- MindAR three -->
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
 
   <script>
     const container = document.querySelector("#container");
     const tap = document.querySelector("#tap");
 
+    const log = (...args) => { console.log("[AR]", ...args); };
+    const fatal = (err) => {
+      console.error(err);
+      const msg = (err && (err.stack || err.message)) ? (err.stack || err.message) : String(err);
+      alert("AR初期化に失敗: \n\n" + msg);
+    };
+
     // Assets
     const video = document.createElement("video");
     video.src = "./demo.mp4";
     video.loop = true;
-    video.muted = true;              // iOS安定のため
+    video.muted = true;
     video.playsInline = true;
     video.setAttribute("playsinline", "");
     video.setAttribute("webkit-playsinline", "");
@@ -94,64 +52,38 @@
     charImg.src = "./character.png";
     charImg.crossOrigin = "anonymous";
 
-    // Sparkle: 小さな白いスプライトを散らす（外部画像不要）
-    function makeSparkleGroup() {
-      const group = new THREE.Group();
-      const geom = new THREE.PlaneGeometry(0.06, 0.06);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
-      const positions = [
-        [ 0.00, 0.00], [ 0.08, 0.02], [-0.07, 0.03], [ 0.03, 0.09],
-        [-0.02,-0.09], [ 0.10,-0.05], [-0.10,-0.04], [ 0.00, 0.12]
-      ];
-      const planes = positions.map(([x,y]) => {
-        const m = new THREE.Mesh(geom, mat.clone());
-        m.position.set(x, y, 0);
-        m.scale.set(0.2, 0.2, 0.2);
-        group.add(m);
-        return m;
-      });
-      group.userData.planes = planes;
-      group.visible = false;
-      return group;
-    }
+    const waitImage = (img) => new Promise((res, rej) => {
+      if (img.complete && img.naturalWidth > 0) return res();
+      img.onload = () => res();
+      img.onerror = (e) => rej(new Error("Failed to load image: character.png"));
+    });
 
-    function playSparkles(group) {
-      group.visible = true;
-      const planes = group.userData.planes;
-      const start = performance.now();
-
-      // reset
-      planes.forEach(p => { p.material.opacity = 0; p.scale.set(0.2,0.2,0.2); });
-
-      // 簡易タイムライン（0.52秒）
-      function tick() {
-        const t = (performance.now() - start) / 1000;
-        planes.forEach((p, i) => {
-          const d = i * 0.018;
-          const local = t - d;
-          if (local < 0) return;
-          if (local < 0.09) {
-            p.material.opacity = local / 0.09; // fade in
-            const s = 0.2 + (1.4-0.2) * (local/0.12);
-            p.scale.set(s,s,s);
-          } else if (local < 0.29) {
-            const k = (local - 0.11) / 0.18; // fade out
-            p.material.opacity = Math.max(0, 1 - k);
-          } else {
-            p.material.opacity = 0;
-          }
-        });
-
-        if (t < 0.52) requestAnimationFrame(tick);
-        else group.visible = false;
-      }
-      requestAnimationFrame(tick);
-    }
+    const waitVideoMeta = (v) => new Promise((res, rej) => {
+      if (v.readyState >= 1) return res();
+      v.onloadedmetadata = () => res();
+      v.onerror = () => rej(new Error("Failed to load video metadata: demo.mp4"));
+    });
 
     async function main() {
+      log("THREE version:", (window.THREE && THREE.REVISION) || "missing");
+      log("MindAR global:", window.MINDAR ? "OK" : "MISSING");
+
+      if (!window.MINDAR || !window.MINDAR.IMAGE || !window.MINDAR.IMAGE.MindARThree) {
+        throw new Error("MindAR (mindar-image-three) not loaded. window.MINDAR.IMAGE.MindARThree is missing.");
+      }
+
+      // Ensure assets are loaded
+      await Promise.all([waitImage(charImg), waitVideoMeta(video)]);
+      log("Assets loaded");
+
+      // Optional: check targets.mind fetch early (404検出)
+      const mindUrl = "./targets.mind";
+      const r = await fetch(mindUrl, { cache: "no-store" });
+      if (!r.ok) throw new Error(`targets.mind fetch failed: ${r.status} ${r.statusText} (check file path/case)`);
+      log("targets.mind fetch OK");
+
       const { MindARThree } = window.MINDAR.IMAGE;
 
-      // MindARThree: カメラ背景も同一canvas内で描画される
       const mindarThree = new MindARThree({
         container,
         imageTargetSrc: "./targets.mind",
@@ -163,52 +95,33 @@
 
       const { renderer, scene, camera } = mindarThree;
 
-      // レンダラ軽量化（モバイル安定）
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(window.innerWidth, window.innerHeight);
 
-      // target anchor
       const anchor = mindarThree.addAnchor(0);
 
-      // --- Character PNG plane (pop) ---
+      // Textures
       const charTex = new THREE.Texture(charImg);
       charTex.needsUpdate = true;
 
-      const charMat = new THREE.MeshBasicMaterial({
-        map: charTex,
-        transparent: true,
-        depthWrite: false
-      });
-      const charGeo = new THREE.PlaneGeometry(0.8, 0.8);
-      const charMesh = new THREE.Mesh(charGeo, charMat);
+      const charMat = new THREE.MeshBasicMaterial({ map: charTex, transparent: true, depthWrite: false, opacity: 1 });
+      const charMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), charMat);
       charMesh.visible = false;
       charMesh.position.set(0, 0, 0.02);
       anchor.group.add(charMesh);
 
-      // --- Video plane ---
       const videoTex = new THREE.VideoTexture(video);
       videoTex.minFilter = THREE.LinearFilter;
       videoTex.magFilter = THREE.LinearFilter;
       videoTex.generateMipmaps = false;
 
-      const videoMat = new THREE.MeshBasicMaterial({
-        map: videoTex,
-        transparent: true,
-        opacity: 0,
-        depthWrite: false
-      });
-      const videoGeo = new THREE.PlaneGeometry(0.5625, 1.0); // 9:16
-      const videoMesh = new THREE.Mesh(videoGeo, videoMat);
+      const videoMat = new THREE.MeshBasicMaterial({ map: videoTex, transparent: true, opacity: 0, depthWrite: false });
+      const videoMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5625, 1.0), videoMat);
       videoMesh.visible = false;
       videoMesh.position.set(0, 0, 0.01);
       anchor.group.add(videoMesh);
 
-      // --- Sparkles ---
-      const sparkleGroup = makeSparkleGroup();
-      sparkleGroup.position.set(0, 0, 0.09);
-      anchor.group.add(sparkleGroup);
-
-      function resetVisuals() {
+      function reset() {
         charMesh.visible = false;
         charMesh.scale.set(1,1,1);
         charMesh.position.set(0,0,0.02);
@@ -216,99 +129,78 @@
 
         videoMesh.visible = false;
         videoMat.opacity = 0;
-
-        sparkleGroup.visible = false;
       }
 
-      // Pop then start video
       function startSequence() {
-        resetVisuals();
-        playSparkles(sparkleGroup);
-
-        // pop in
+        reset();
         charMesh.visible = true;
         charMesh.scale.set(0.01,0.01,0.01);
-        charMesh.position.set(0,0,0.02);
 
         const t0 = performance.now();
-
-        function anim() {
+        const tick = () => {
           const t = (performance.now() - t0) / 1000;
 
-          // 0~0.24s: overshoot
+          // pop
           if (t < 0.24) {
             const k = t / 0.24;
             const s = 0.01 + (1.2 - 0.01) * k;
             charMesh.scale.set(s,s,s);
-            const z = 0.02 + (0.08 - 0.02) * k;
-            charMesh.position.z = z;
-          }
-          // 0.24~0.41s: settle
-          else if (t < 0.41) {
+            charMesh.position.z = 0.02 + (0.08 - 0.02) * k;
+          } else if (t < 0.41) {
             const k = (t - 0.24) / 0.17;
             const s = 1.2 + (1.0 - 1.2) * k;
             charMesh.scale.set(s,s,s);
-            const z = 0.08 + (0.06 - 0.08) * k;
-            charMesh.position.z = z;
+            charMesh.position.z = 0.08 + (0.06 - 0.08) * k;
           }
 
-          // 0.60s: fade-in video + fade-out char
+          // video in
           if (t > 0.60 && !videoMesh.visible) {
             videoMesh.visible = true;
-            // start video
             video.play().catch(()=>{});
           }
-
           if (videoMesh.visible) {
-            // 0.60~1.05s: video fade in
             const k = Math.min(1, (t - 0.60) / 0.45);
             videoMat.opacity = k;
-
-            // char fade out 0.60~0.85
             const kc = Math.min(1, (t - 0.60) / 0.25);
             charMat.opacity = 1 - kc;
-            if (kc >= 1) {
-              charMesh.visible = false;
-              charMat.opacity = 1;
-            }
+            if (kc >= 1) { charMesh.visible = false; charMat.opacity = 1; }
           }
 
-          if (t < 1.2) requestAnimationFrame(anim);
-        }
-        requestAnimationFrame(anim);
+          if (t < 1.2) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
       }
 
-      // Events
-      anchor.onTargetFound = () => startSequence();
-      anchor.onTargetLost  = () => { video.pause(); resetVisuals(); };
+      anchor.onTargetFound = () => { log("targetFound"); startSequence(); };
+      anchor.onTargetLost  = () => { log("targetLost"); video.pause(); reset(); };
 
-      // Start MindAR (camera)
+      log("Starting MindAR camera...");
       await mindarThree.start();
+      log("MindAR started OK");
 
-      // render loop
-      renderer.setAnimationLoop(() => {
-        renderer.render(scene, camera);
-      });
+      renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
-      // resize
       window.addEventListener("resize", () => {
         renderer.setSize(window.innerWidth, window.innerHeight);
       });
     }
 
-    // iOSは「ユーザー操作」がないと video.play が失敗しやすい
     async function boot() {
       tap.classList.add("hidden");
-      // 先にvideoを一瞬だけ再生→停止して権限アンロック
       try {
+        // unlock video playback
         await video.play();
         video.pause();
         video.currentTime = 0;
-      } catch(e) {}
-      main().catch(err => {
-        console.error(err);
-        alert("AR初期化に失敗しました。コンソールを確認してください。");
-      });
+      } catch (e) {
+        log("video unlock failed (ok on iOS):", e);
+      }
+
+      try {
+        await main();
+      } catch (err) {
+        fatal(err);
+      }
     }
 
     window.addEventListener("click", boot, { once: true });
