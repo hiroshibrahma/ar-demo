@@ -33,13 +33,14 @@
     <div class="hint">カメラ許可 → アクキーを映すと動画が重なって再生されます（iPhoneは最初に一度タップ）</div>
 
     <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes;"
-      embedded
-      renderer="colorManagement: true; physicallyCorrectLights: true"
-      color-space="sRGB"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: true"
-    >
+  mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes;"
+  embedded
+  transparent
+  renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true;"
+  color-space="sRGB"
+  vr-mode-ui="enabled: false"
+  device-orientation-permission-ui="enabled: true"
+>
       <a-assets>
         <video
           id="arVideo"
