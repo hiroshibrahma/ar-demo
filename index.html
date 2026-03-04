@@ -30,7 +30,7 @@
 
   <body>
     <div class="top">NAZE AR Demo</div>
-    <div class="hint">カメラ許可 → アクキーを映すと動画が重なって再生されます（iPhoneは最初に一度タップ）</div>
+    <div class="hint">カメラ許可 → アクキーを映すとキャラが飛び出して、そのままアクションが始まります</div>
 
     <a-scene
       mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes; filterMinCF: 0.001; filterBeta: 0.01;"
@@ -41,6 +41,7 @@
       device-orientation-permission-ui="enabled: true"
     >
       <a-assets>
+        <!-- 背景付きアクション動画 -->
         <video
           id="arVideo"
           src="./demo.mp4"
@@ -50,17 +51,32 @@
           webkit-playsinline
           crossorigin="anonymous"
         ></video>
+
+        <!-- 飛び出し用：キャラ透過PNG（リポジトリ直下に character.png を置く） -->
+        <img id="charImg" src="./character.png" crossorigin="anonymous" />
       </a-assets>
 
-      <!-- これが無いと認識しません -->
       <a-camera mindar-image-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <a-entity id="target" mindar-image-target="targetIndex: 0">
+        <!-- 1) 飛び出しキャラ（最初は非表示） -->
         <a-plane
+          id="charPlane"
+          visible="false"
+          position="0 0 0.02"
+          width="0.8"
+          height="0.8"
+          material="shader: flat; src: #charImg; transparent: true; alphaTest: 0.1; opacity: 1;"
+        ></a-plane>
+
+        <!-- 2) 背景付き動画（最初は非表示＆透明） -->
+        <a-plane
+          id="videoPlane"
+          visible="false"
           position="0 0 0.01"
           width="0.5625"
           height="1.0"
-          material="shader: flat; src: #arVideo; transparent: true;"
+          material="shader: flat; src: #arVideo; transparent: true; opacity: 0;"
         ></a-plane>
       </a-entity>
     </a-scene>
@@ -68,7 +84,10 @@
     <script>
       const videoEl = document.querySelector("#arVideo");
       const targetEl = document.querySelector("#target");
+      const charPlane = document.querySelector("#charPlane");
+      const videoPlane = document.querySelector("#videoPlane");
 
+      // iOS: ユーザー操作で動画再生権限をアンロック
       const unlock = async () => {
         try {
           videoEl.muted = true;
@@ -80,16 +99,74 @@
       window.addEventListener("touchend", unlock, { once: true });
       window.addEventListener("click", unlock, { once: true });
 
+      const resetVisuals = () => {
+        // キャラ
+        charPlane.setAttribute("visible", "false");
+        charPlane.setAttribute("scale", "1 1 1");
+        charPlane.setAttribute("position", "0 0 0.02");
+        charPlane.setAttribute("material", "opacity: 1;");
+
+        // 動画
+        videoPlane.setAttribute("visible", "false");
+        videoPlane.setAttribute("material", "opacity: 0;");
+      };
+
+      const popCharacterThenStartVideo = async () => {
+        // 1) キャラ飛び出し
+        charPlane.setAttribute("visible", "true");
+        charPlane.setAttribute("scale", "0.01 0.01 0.01");
+        charPlane.setAttribute("position", "0 0 0.02");
+
+        // アニメ（スケール＆前に出る）
+        charPlane.setAttribute("animation__s1",
+          "property: scale; to: 1.2 1.2 1.2; dur: 240; easing: easeOutBack");
+        charPlane.setAttribute("animation__p1",
+          "property: position; to: 0 0 0.08; dur: 240; easing: easeOutQuad");
+
+        // 少し戻して安定（バウンス）
+        setTimeout(() => {
+          charPlane.setAttribute("animation__s2",
+            "property: scale; to: 1 1 1; dur: 160; easing: easeOutQuad");
+          charPlane.setAttribute("animation__p2",
+            "property: position; to: 0 0 0.06; dur: 160; easing: easeOutQuad");
+        }, 250);
+
+        // 2) 0.6秒後に動画を開始＆フェードイン
+        setTimeout(async () => {
+          videoPlane.setAttribute("visible", "true");
+          try {
+            videoEl.muted = true; // 音無しの方が安定
+            await videoEl.play();
+          } catch (e) {}
+
+          // 動画フェードイン
+          videoPlane.setAttribute("animation__vIn",
+            "property: material.opacity; to: 1; dur: 220; easing: easeOutQuad");
+
+          // キャラはフェードアウトして消す（動画に切り替わった感）
+          charPlane.setAttribute("animation__cOut",
+            "property: material.opacity; to: 0; dur: 180; easing: easeOutQuad");
+
+          setTimeout(() => {
+            charPlane.setAttribute("visible", "false");
+            charPlane.setAttribute("material", "opacity: 1;");
+          }, 200);
+
+        }, 600);
+      };
+
       targetEl.addEventListener("targetFound", async () => {
-        try {
-          videoEl.muted = true;
-          await videoEl.play();
-        } catch (e) {}
+        resetVisuals();
+        popCharacterThenStartVideo();
       });
 
       targetEl.addEventListener("targetLost", () => {
         try { videoEl.pause(); } catch (e) {}
+        resetVisuals();
       });
+
+      // 初期化
+      resetVisuals();
     </script>
   </body>
 </html>
