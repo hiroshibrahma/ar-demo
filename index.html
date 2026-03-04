@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>NAZE AR Demo</title>
 
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <!-- A-Frame（iPhoneで安定しやすい版に固定） -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <!-- MindAR (A-Frame integration) -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
@@ -25,9 +27,6 @@
         text-align: center; z-index: 10;
         pointer-events: none;
       }
-      /* MindARのカメラ要素が背面に隠れないようにする */
-a-scene, canvas { position: fixed !important; inset: 0 !important; }
-canvas { width: 100vw !important; height: 100vh !important; }
     </style>
   </head>
 
@@ -36,14 +35,20 @@ canvas { width: 100vw !important; height: 100vh !important; }
     <div class="hint">カメラ許可 → アクキーを映すと動画が重なって再生されます（iPhoneは最初に一度タップ）</div>
 
     <a-scene
-  mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes;"
-  embedded
-  transparent
-  renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true;"
-  color-space="sRGB"
-  vr-mode-ui="enabled: false"
-  device-orientation-permission-ui="enabled: true"
->
+      mindar-image="
+        imageTargetSrc: ./targets.mind;
+        autoStart: true;
+        uiScanning: yes;
+        uiLoading: yes;
+        filterMinCF: 0.001;
+        filterBeta: 0.01;
+      "
+      embedded
+      renderer="colorManagement: true; physicallyCorrectLights: true;"
+      color-space="sRGB"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: true"
+    >
       <a-assets>
         <video
           id="arVideo"
@@ -56,15 +61,15 @@ canvas { width: 100vw !important; height: 100vh !important; }
         ></video>
       </a-assets>
 
-      <!-- ここが重要：余計なパラメータなしで mindar-image-camera を付ける -->
+      <!-- MindARカメラ（これで背景に現実映像が出る） -->
       <a-camera
+        mindar-image-camera
         position="0 0 0"
         look-controls="enabled: false"
-        mindar-image-camera
       ></a-camera>
 
       <a-entity id="target" mindar-image-target="targetIndex: 0">
-        <!-- 9:16想定（縦動画）。必要なら後で詰める -->
+        <!-- 9:16（縦）を固定表示 -->
         <a-plane
           position="0 0 0.01"
           width="0.5625"
@@ -78,10 +83,9 @@ canvas { width: 100vw !important; height: 100vh !important; }
       const videoEl = document.querySelector("#arVideo");
       const targetEl = document.querySelector("#target");
 
-      // iOS: タップで再生権限を解除（ミュートで通しやすくする）
       const unlock = async () => {
         try {
-          videoEl.muted = true;
+          videoEl.muted = true; // iOSはミュートが通りやすい
           await videoEl.play();
           videoEl.pause();
           videoEl.currentTime = 0;
@@ -92,7 +96,7 @@ canvas { width: 100vw !important; height: 100vh !important; }
 
       targetEl.addEventListener("targetFound", async () => {
         try {
-          videoEl.muted = true; // 音いらないならこれが一番安定
+          videoEl.muted = true;
           await videoEl.play();
         } catch (e) {}
       });
