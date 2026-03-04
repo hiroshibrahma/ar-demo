@@ -25,6 +25,9 @@
         text-align: center; z-index: 10;
         pointer-events: none;
       }
+      /* MindARのカメラ要素が背面に隠れないようにする */
+a-scene, canvas { position: fixed !important; inset: 0 !important; }
+canvas { width: 100vw !important; height: 100vh !important; }
     </style>
   </head>
 
