@@ -2,71 +2,201 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      viewport-fit=cover is REQUIRED for iPhone notch / home-bar safe-areas.
+      Do NOT add maximum-scale=1 here — it breaks A-Frame on some iOS versions.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>NAZE AR Demo</title>
 
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-      html, body {
-        margin: 0;
+      /* ─────────────────────────────────────────────
+         ROOT FIX: Use --vh CSS variable set by JS.
+         iOS Safari's 100vh = layout viewport height
+         which EXCLUDES the bottom browser chrome,
+         so MindAR's _resize() reads clientHeight
+         correctly but the canvas/scene element
+         still renders tall = 100vh (wrong value).
+         We force everything to use window.innerHeight
+         via a CSS custom property updated on resize.
+      ───────────────────────────────────────────── */
+      :root {
+        --vh: 1vh; /* overwritten by JS immediately */
+      }
+
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        /* Prevent elastic/bounce scroll that shifts layout */
+        overflow: hidden;
         height: 100%;
+        /* iOS: disable user-select to avoid ghost tap issues */
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        /* Use JS-measured actual height, NOT 100vh */
+        height: calc(var(--vh, 1vh) * 100);
         overflow: hidden;
         background: #000;
+        /* iOS: prevent momentum scrolling from shifting the camera */
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: none;
+        touch-action: none;
       }
 
-      /* ★ ここが重要：A-Frameのcanvasを必ず全画面固定 */
+      /*
+        a-scene uses `embedded` attribute, so A-Frame
+        won't auto-fullscreen it — we control sizing here.
+        position:fixed is CRITICAL on iOS: position:absolute
+        scrolls with the page causing camera to shift.
+      */
       a-scene {
+        display: block;
         position: fixed !important;
-        inset: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        /* Use JS height variable, NOT 100vh */
+        height: calc(var(--vh, 1vh) * 100) !important;
         z-index: 1;
-      }
-      canvas {
-        position: fixed !important;
-        inset: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        z-index: 1;
+        /* Prevent sub-pixel rendering gaps */
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
       }
 
+      /*
+        The WebGL canvas A-Frame creates.
+        Must be fixed + full-size so Three.js renderer
+        covers the whole screen.
+      */
+      canvas {
+        display: block !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: calc(var(--vh, 1vh) * 100) !important;
+        z-index: 1;
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+      }
+
+      /*
+        MindAR injects a <video> as the camera background.
+        It sets style.top / style.left / style.width / style.height
+        via JS (_resize). We ONLY apply object-fit and positioning
+        — we do NOT override the MindAR-computed dimensions
+        (that would re-break the cover calculation).
+        The <video> sits BEHIND the canvas (z-index: -2 in MindAR source).
+      */
+      video#mindar-camera-video,
+      a-scene video:not(#arVideo) {
+        /* 
+          object-fit: cover ensures the video fills its
+          MindAR-assigned box without letterboxing.
+          This is the correct semantic for a camera background.
+        */
+        object-fit: cover;
+        -webkit-object-fit: cover; /* older Safari */
+        /* iOS: never let the camera video trigger layout */
+        position: absolute !important;
+        z-index: -2 !important;
+        /* Hardware-accelerated layer prevents iOS compositing bug */
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+        will-change: transform;
+        /* Avoid flicker during metadata load on iOS */
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+      }
+
+      /*
+        MindAR UI overlay (scanning frame, loading spinner).
+        Must be fixed and full-size to track the viewport.
+      */
+      .mindar-ui-overlay {
+        position: fixed !important;
+        z-index: 5 !important;
+      }
+
+      /* ── HUD elements ───────────────────────────── */
       .top {
-        position: fixed; left: 0; right: 0; top: 0;
-        padding: 10px 12px;
+        position: fixed;
+        left: 0; right: 0; top: 0;
+        /* iOS safe-area: pad below the notch */
+        padding: max(env(safe-area-inset-top, 0px), 10px) 12px 10px;
         font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
         color: #fff;
-        background: rgba(0,0,0,.35);
+        background: rgba(0, 0, 0, .35);
         text-align: center;
         z-index: 10;
         pointer-events: none;
       }
+
       .hint {
-        position: fixed; left: 0; right: 0; bottom: 0;
-        padding: 12px 14px;
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        /* iOS safe-area: pad above the home bar */
+        padding: 12px 14px max(env(safe-area-inset-bottom, 0px), 12px);
         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
         color: #fff;
-        background: rgba(0,0,0,.55);
+        background: rgba(0, 0, 0, .55);
         text-align: center;
         z-index: 10;
+        /* pointer-events: auto so tap-to-unlock works */
       }
     </style>
   </head>
 
   <body>
     <div class="top">NAZE AR Demo</div>
-    <div class="hint">カメラ許可 → アクキーを映すと「ポン」→そのまま動画が始まります（iPhone/iPadは最初に1回タップ）</div>
+    <div class="hint" id="hintBar">
+      カメラ許可 → アクキーを映すと「ポン」→ そのまま動画が始まります<br>
+      <small>（iPhone / iPad は最初に1回タップしてください）</small>
+    </div>
 
+    <!--
+      Key attributes:
+        embedded         → A-Frame does NOT take over full-page; we control size via CSS
+        renderer         → antialias off saves GPU on mobile; precision mediump is faster
+        color-space      → must match renderer colorManagement
+        vr-mode-ui       → no VR button on mobile AR pages
+    -->
     <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes; filterMinCF: 0.001; filterBeta: 0.01;"
+      mindar-image="imageTargetSrc: ./targets.mind;
+                    autoStart: true;
+                    uiScanning: yes;
+                    uiLoading: yes;
+                    filterMinCF: 0.001;
+                    filterBeta: 0.01;"
       embedded
       vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: true"
-      renderer="colorManagement: true; physicallyCorrectLights: true;"
+      device-orientation-permission-ui="enabled: false"
+      renderer="antialias: false;
+                colorManagement: true;
+                physicallyCorrectLights: false;
+                precision: mediump;"
+      color-space="sRGB"
     >
-      <a-assets>
-        <!-- 動画：iOS安定のため muted を付ける -->
+      <a-assets timeout="30000">
+        <!--
+          iOS video rules:
+            muted        → required for autoplay
+            playsinline  → required to prevent full-screen hijack
+            webkit-playsinline → legacy Safari
+            crossorigin  → required for WebGL texture upload
+          Do NOT add autoplay here; we call .play() manually
+          after a user gesture to satisfy iOS policy.
+        -->
         <video
           id="arVideo"
           src="./demo.mp4"
@@ -81,27 +211,42 @@
         <img id="charImg" src="./character.png" crossorigin="anonymous" />
       </a-assets>
 
-      <!-- ★ mindar-image-camera はこれだけでOK -->
+      <!--
+        mindar-image-camera is a MindAR-specific component.
+        It wires the camera background video into the AR pipeline.
+        position="0 0 0" + look-controls disabled is correct.
+      -->
       <a-camera
+        id="arCamera"
         mindar-image-camera
         position="0 0 0"
         look-controls="enabled: false"
+        wasd-controls="enabled: false"
       ></a-camera>
 
       <a-entity id="target" mindar-image-target="targetIndex: 0">
-        <!-- スパークル -->
+
+        <!-- Sparkle particles -->
         <a-entity id="sparkles" visible="false" position="0 0 0.09">
-          <a-plane class="sp" position="0.00 0.00 0.00" width="0.06" height="0.06" material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
-          <a-plane class="sp" position="0.08 0.02 0.00" width="0.05" height="0.05" material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
-          <a-plane class="sp" position="-0.07 0.03 0.00" width="0.05" height="0.05" material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
-          <a-plane class="sp" position="0.03 0.09 0.00" width="0.05" height="0.05" material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
-          <a-plane class="sp" position="-0.02 -0.09 0.00" width="0.05" height="0.05" material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
-          <a-plane class="sp" position="0.10 -0.05 0.00" width="0.05" height="0.05" material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
-          <a-plane class="sp" position="-0.10 -0.04 0.00" width="0.05" height="0.05" material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
-          <a-plane class="sp" position="0.00 0.12 0.00" width="0.05" height="0.05" material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
+          <a-plane class="sp" position=" 0.00  0.00 0" width="0.06" height="0.06"
+            material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
+          <a-plane class="sp" position=" 0.08  0.02 0" width="0.05" height="0.05"
+            material="shader: flat; color: #FFE97A; transparent: true; opacity: 0;"></a-plane>
+          <a-plane class="sp" position="-0.07  0.03 0" width="0.05" height="0.05"
+            material="shader: flat; color: #FFE97A; transparent: true; opacity: 0;"></a-plane>
+          <a-plane class="sp" position=" 0.03  0.09 0" width="0.05" height="0.05"
+            material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
+          <a-plane class="sp" position="-0.02 -0.09 0" width="0.05" height="0.05"
+            material="shader: flat; color: #FFD0FF; transparent: true; opacity: 0;"></a-plane>
+          <a-plane class="sp" position=" 0.10 -0.05 0" width="0.05" height="0.05"
+            material="shader: flat; color: #FFE97A; transparent: true; opacity: 0;"></a-plane>
+          <a-plane class="sp" position="-0.10 -0.04 0" width="0.05" height="0.05"
+            material="shader: flat; color: #FFD0FF; transparent: true; opacity: 0;"></a-plane>
+          <a-plane class="sp" position=" 0.00  0.12 0" width="0.05" height="0.05"
+            material="shader: flat; color: #FFFFFF; transparent: true; opacity: 0;"></a-plane>
         </a-entity>
 
-        <!-- キャラ（最初にポン） -->
+        <!-- Character PNG: pops out on targetFound -->
         <a-plane
           id="charPlane"
           visible="false"
@@ -111,7 +256,7 @@
           material="shader: flat; src: #charImg; transparent: true; alphaTest: 0.1; opacity: 1;"
         ></a-plane>
 
-        <!-- 背景付き動画（後からフェードイン） -->
+        <!-- Background video plane: fades in after character pop -->
         <a-plane
           id="videoPlane"
           visible="false"
@@ -120,123 +265,277 @@
           height="1.0"
           material="shader: flat; src: #arVideo; transparent: true; opacity: 0;"
         ></a-plane>
+
       </a-entity>
     </a-scene>
 
     <script>
-      const videoEl = document.querySelector("#arVideo");
-      const targetEl = document.querySelector("#target");
-      const charPlane = document.querySelector("#charPlane");
-      const videoPlane = document.querySelector("#videoPlane");
-      const sparkles = document.querySelector("#sparkles");
+      /* ================================================================
+         SECTION 1: iOS --vh fix
+         iOS Safari's "100vh" includes the URL bar height when it's
+         collapsed, but window.innerHeight gives the true visible height.
+         We set --vh = window.innerHeight * 0.01 so all our CSS
+         calc(var(--vh)*100) expressions use the real visible height.
+         This must run BEFORE A-Frame renders for the first time,
+         so we also re-run it on resize / orientation change.
+      ================================================================ */
+      function setVh() {
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+      }
+      setVh(); // immediate
+      window.addEventListener('resize', setVh, { passive: true });
+      window.addEventListener('orientationchange', () => {
+        // orientationchange fires BEFORE innerHeight updates on iOS
+        setTimeout(setVh, 100);
+        setTimeout(setVh, 300); // double-fire for slow devices
+      }, { passive: true });
 
+      /* ================================================================
+         SECTION 2: MindAR container sizing override
+         MindAR's _resize() uses `container.clientWidth/clientHeight`
+         where `container = a-scene.parentNode` (= <body>).
+         On iOS, body.clientHeight can return the layout viewport
+         height (= window.innerHeight INCLUDING the collapsed URL bar),
+         which is taller than the visible screen when the bar expands.
+         We intercept this by:
+           1. Patching body to always report the correct clientHeight
+              via a CSS height forced to match window.innerHeight.
+           2. Re-triggering MindAR's _resize after any height change.
+      ================================================================ */
+      function fixContainerHeight() {
+        const h = window.innerHeight;
+        document.body.style.height = h + 'px';
+        // Force the scene element to the same height
+        const scene = document.querySelector('a-scene');
+        if (scene) {
+          scene.style.height = h + 'px';
+        }
+      }
+      fixContainerHeight();
+      window.addEventListener('resize', fixContainerHeight, { passive: true });
+      window.addEventListener('orientationchange', () => {
+        setTimeout(fixContainerHeight, 100);
+        setTimeout(fixContainerHeight, 350);
+      }, { passive: true });
+
+      /* ================================================================
+         SECTION 3: MindAR _resize re-trigger
+         After orientation changes or URL-bar show/hide, MindAR needs
+         to recalculate its video dimensions. We call the system's
+         _resize() manually since the DOM resize event alone is
+         sometimes not enough on iOS.
+      ================================================================ */
+      function triggerMindARResize() {
+        const scene = document.querySelector('a-scene');
+        if (!scene || !scene.systems) return;
+        const sys = scene.systems['mindar-image-system'];
+        if (sys && typeof sys._resize === 'function') {
+          try { sys._resize(); } catch (e) {}
+        }
+        // Also patch the camera video element's sizing on each resize
+        fixCameraVideo();
+      }
+
+      /* ================================================================
+         SECTION 4: Camera video element direct fix
+         MindAR creates <video style="position:absolute; top:Xpx; ...">
+         inside the a-scene's parent container (body).
+         The video's computed top/left offset sometimes mis-positions
+         it when the container height is wrong on first paint.
+         We watch for this video element and apply corrective CSS.
+      ================================================================ */
+      function fixCameraVideo() {
+        // MindAR's camera video is the ONLY video directly in <body>
+        // (the #arVideo is inside <a-assets> which is inside <a-scene>)
+        const videos = document.querySelectorAll('body > video, a-scene ~ video');
+        videos.forEach(v => {
+          if (v.id === 'arVideo') return; // skip the AR video asset
+          // Promote to its own GPU layer to avoid iOS compositing issues
+          v.style.transform = 'translateZ(0)';
+          v.style.webkitTransform = 'translateZ(0)';
+          v.style.willChange = 'transform';
+          // object-fit: cover fills the MindAR-assigned box properly
+          v.style.objectFit = 'cover';
+          v.style.webkitObjectFit = 'cover';
+          // These are already set by MindAR but re-enforce them
+          v.style.position = 'absolute';
+          v.style.zIndex = '-2';
+        });
+      }
+
+      /* ================================================================
+         SECTION 5: MutationObserver — watch for MindAR video injection
+         MindAR calls _startVideo() asynchronously after camera
+         permission. We watch the body/scene for a new <video> element
+         and immediately apply the GPU-layer fix when it appears.
+      ================================================================ */
+      const videoObserver = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (node.tagName === 'VIDEO' && node.id !== 'arVideo') {
+              // Small delay to let MindAR finish setting initial styles
+              setTimeout(fixCameraVideo, 50);
+              setTimeout(fixCameraVideo, 300);
+              setTimeout(triggerMindARResize, 400);
+            }
+          }
+        }
+      });
+      videoObserver.observe(document.body, { childList: true, subtree: true });
+
+      /* ================================================================
+         SECTION 6: arReady hook — re-resize after AR engine is ready
+         MindAR emits "arReady" when the .mind file is loaded and the
+         first _resize() has been called. At that point window.innerHeight
+         is reliable, so we re-trigger _resize for accuracy.
+      ================================================================ */
+      document.querySelector('a-scene').addEventListener('arReady', () => {
+        setTimeout(triggerMindARResize, 100);
+        setTimeout(triggerMindARResize, 500);
+        // Update hint bar
+        const hint = document.getElementById('hintBar');
+        if (hint) hint.textContent = 'アクキーをカメラに向けてください ✦';
+      });
+
+      /* ================================================================
+         SECTION 7: AR sequence logic
+      ================================================================ */
+      const videoEl   = document.querySelector('#arVideo');
+      const targetEl  = document.querySelector('#target');
+      const charPlane = document.querySelector('#charPlane');
+      const videoPlane= document.querySelector('#videoPlane');
+      const sparkles  = document.querySelector('#sparkles');
+
+      /* ── helpers ── */
       const resetVisuals = () => {
-        // sparkles
-        sparkles.setAttribute("visible", "false");
+        sparkles.setAttribute('visible', 'false');
 
-        // char
-        charPlane.setAttribute("visible", "false");
-        charPlane.setAttribute("scale", "1 1 1");
-        charPlane.setAttribute("position", "0 0 0.02");
-        charPlane.setAttribute("material", "opacity: 1;");
+        charPlane.setAttribute('visible', 'false');
+        charPlane.setAttribute('scale', '1 1 1');
+        charPlane.setAttribute('position', '0 0 0.02');
+        charPlane.removeAttribute('animation__scale1');
+        charPlane.removeAttribute('animation__scale2');
+        charPlane.removeAttribute('animation__pos1');
+        charPlane.removeAttribute('animation__pos2');
+        charPlane.removeAttribute('animation__cOut');
+        charPlane.setAttribute('material', 'opacity: 1;');
 
-        // video
-        videoPlane.setAttribute("visible", "false");
-        videoPlane.setAttribute("material", "opacity: 0;");
+        videoPlane.setAttribute('visible', 'false');
+        videoPlane.removeAttribute('animation__vIn');
+        videoPlane.setAttribute('material', 'opacity: 0;');
       };
 
       const playSparkles = () => {
-        const sps = sparkles.querySelectorAll(".sp");
-        sparkles.setAttribute("visible", "true");
-
-        sps.forEach((el) => {
-          el.setAttribute("material", "opacity: 0;");
-          el.setAttribute("scale", "0.2 0.2 0.2");
+        const sps = sparkles.querySelectorAll('.sp');
+        sparkles.setAttribute('visible', 'true');
+        sps.forEach(el => {
+          el.setAttribute('material', 'opacity: 0;');
+          el.setAttribute('scale', '0.2 0.2 0.2');
         });
-
         sps.forEach((el, i) => {
-          const delay = i * 18;
+          const delay = i * 20;
           setTimeout(() => {
-            el.setAttribute("animation__in",
-              "property: material.opacity; to: 1; dur: 90; easing: easeOutQuad");
-            el.setAttribute("animation__scale",
-              "property: scale; to: 1.4 1.4 1.4; dur: 120; easing: easeOutQuad");
-            el.setAttribute("animation__out",
-              "property: material.opacity; to: 0; dur: 180; delay: 110; easing: easeOutQuad");
+            el.setAttribute('animation__in',
+              'property: material.opacity; to: 1; dur: 90; easing: easeOutQuad');
+            el.setAttribute('animation__scale',
+              'property: scale; to: 1.4 1.4 1.4; dur: 120; easing: easeOutQuad');
+            el.setAttribute('animation__out',
+              'property: material.opacity; to: 0; dur: 200; delay: 110; easing: easeOutQuad');
           }, delay);
         });
-
-        setTimeout(() => {
-          sparkles.setAttribute("visible", "false");
-        }, 520);
+        setTimeout(() => sparkles.setAttribute('visible', 'false'), 600);
       };
 
-      // iOS: まず1回タップで動画再生権限を解除
-      const unlock = async () => {
+      /* ── iOS video unlock (requires user gesture) ── */
+      let videoUnlocked = false;
+      const unlockVideo = async () => {
+        if (videoUnlocked) return;
         try {
           videoEl.muted = true;
           await videoEl.play();
           videoEl.pause();
           videoEl.currentTime = 0;
-        } catch (e) {}
+          videoUnlocked = true;
+        } catch (e) { /* silent fail — will retry on targetFound */ }
       };
-      window.addEventListener("touchend", unlock, { once: true });
-      window.addEventListener("click", unlock, { once: true });
+      window.addEventListener('touchend', unlockVideo, { once: true, passive: true });
+      window.addEventListener('click',    unlockVideo, { once: true });
 
+      /* ── main AR sequence ── */
       const startExperience = async () => {
         playSparkles();
 
-        // キャラ：ポン
-        charPlane.setAttribute("visible", "true");
-        charPlane.setAttribute("scale", "0.01 0.01 0.01");
-        charPlane.setAttribute("position", "0 0 0.02");
-
-        charPlane.setAttribute("animation__scale1",
-          "property: scale; to: 1.2 1.2 1.2; dur: 240; easing: easeOutBack");
-        charPlane.setAttribute("animation__pos1",
-          "property: position; to: 0 0 0.08; dur: 240; easing: easeOutQuad");
+        // --- step 1: character pop ---
+        charPlane.setAttribute('visible', 'true');
+        charPlane.setAttribute('scale', '0.01 0.01 0.01');
+        charPlane.setAttribute('position', '0 0 0.02');
+        charPlane.setAttribute('animation__scale1',
+          'property: scale; to: 1.2 1.2 1.2; dur: 240; easing: easeOutBack');
+        charPlane.setAttribute('animation__pos1',
+          'property: position; to: 0 0 0.08; dur: 240; easing: easeOutQuad');
 
         setTimeout(() => {
-          charPlane.setAttribute("animation__scale2",
-            "property: scale; to: 1 1 1; dur: 160; easing: easeOutQuad");
-          charPlane.setAttribute("animation__pos2",
-            "property: position; to: 0 0 0.06; dur: 160; easing: easeOutQuad");
+          charPlane.setAttribute('animation__scale2',
+            'property: scale; to: 1 1 1; dur: 160; easing: easeOutQuad');
+          charPlane.setAttribute('animation__pos2',
+            'property: position; to: 0 0 0.06; dur: 160; easing: easeOutQuad');
         }, 250);
 
-        // 0.6秒後：動画フェードイン開始
+        // --- step 2: video fade-in (600ms later) ---
         setTimeout(async () => {
-          videoPlane.setAttribute("visible", "true");
+          videoPlane.setAttribute('visible', 'true');
 
+          // Ensure video is playable (re-unlock if gesture was missed)
           try {
             videoEl.muted = true;
+            videoEl.currentTime = 0;
             await videoEl.play();
-          } catch (e) {}
+          } catch (e) {
+            // On iOS, play() may still fail if no gesture yet —
+            // attach a one-time tap handler to retry
+            const retry = async () => {
+              try { await videoEl.play(); } catch (_) {}
+            };
+            window.addEventListener('touchend', retry, { once: true, passive: true });
+          }
 
-          videoPlane.setAttribute("animation__vIn",
-            "property: material.opacity; to: 1; dur: 450; easing: easeOutQuad");
+          videoPlane.setAttribute('animation__vIn',
+            'property: material.opacity; to: 1; dur: 450; easing: easeOutQuad');
 
-          // キャラはフェードアウトして動画に溶け込ませる
-          charPlane.setAttribute("animation__cOut",
-            "property: material.opacity; to: 0; dur: 250; easing: easeOutQuad");
-
+          // Fade out character while video fades in
+          charPlane.setAttribute('animation__cOut',
+            'property: material.opacity; to: 0; dur: 250; easing: easeOutQuad');
           setTimeout(() => {
-            charPlane.setAttribute("visible", "false");
-            charPlane.setAttribute("material", "opacity: 1;");
+            charPlane.setAttribute('visible', 'false');
+            charPlane.setAttribute('material', 'opacity: 1;');
           }, 260);
 
         }, 600);
       };
 
-      targetEl.addEventListener("targetFound", async () => {
+      /* ── target events ── */
+      targetEl.addEventListener('targetFound', () => {
         resetVisuals();
         startExperience();
+        const hint = document.getElementById('hintBar');
+        if (hint) {
+          hint.textContent = '✦ 認識しました！';
+          setTimeout(() => { hint.style.display = 'none'; }, 2000);
+        }
       });
 
-      targetEl.addEventListener("targetLost", () => {
+      targetEl.addEventListener('targetLost', () => {
         try { videoEl.pause(); } catch (e) {}
         resetVisuals();
+        const hint = document.getElementById('hintBar');
+        if (hint) {
+          hint.style.display = '';
+          hint.textContent = 'アクキーをカメラに向けてください ✦';
+        }
       });
 
+      /* initial state */
       resetVisuals();
     </script>
   </body>
