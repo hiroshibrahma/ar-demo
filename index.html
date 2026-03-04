@@ -5,36 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>NAZE AR Demo</title>
 
-    <!-- A-Frame -->
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    <!-- MindAR (A-Frame integration) -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background:#000; }
-
-      /* 1) これが「現実映像」= iPhoneのカメラ */
-      #cameraFeed {
-        position: fixed;
-        inset: 0;
-        width: 100vw;
-        height: 100vh;
-        object-fit: cover;
-        z-index: 0;
-        background: #000;
-      }
-
-      /* 2) その上にAR(=A-Frame canvas)を重ねる */
-      a-scene {
-        position: fixed !important;
-        inset: 0 !important;
-        z-index: 1;
-      }
-      canvas {
-        width: 100vw !important;
-        height: 100vh !important;
-      }
-
       .hint {
         position: fixed; left: 0; right: 0; bottom: 0;
         padding: 12px 14px;
@@ -54,113 +29,67 @@
   </head>
 
   <body>
-    <!-- 背景カメラ（これが黒にならない） -->
-    <video id="cameraFeed" autoplay playsinline webkit-playsinline muted></video>
-
     <div class="top">NAZE AR Demo</div>
     <div class="hint">カメラ許可 → アクキーを映すと動画が重なって再生されます（iPhoneは最初に一度タップ）</div>
 
-    <!-- ARシーンはJSで後から生成（カメラ準備後に起動して詰まりを防ぐ） -->
-    <div id="arRoot"></div>
+    <a-scene
+      mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes; filterMinCF: 0.001; filterBeta: 0.01;"
+      embedded
+      renderer="colorManagement: true; physicallyCorrectLights: true;"
+      color-space="sRGB"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: true"
+    >
+      <a-assets>
+        <video
+          id="arVideo"
+          src="./demo.mp4"
+          preload="auto"
+          loop
+          playsinline
+          webkit-playsinline
+          crossorigin="anonymous"
+        ></video>
+      </a-assets>
+
+      <!-- これが無いと認識しません -->
+      <a-camera mindar-image-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-entity id="target" mindar-image-target="targetIndex: 0">
+        <a-plane
+          position="0 0 0.01"
+          width="0.5625"
+          height="1.0"
+          material="shader: flat; src: #arVideo; transparent: true;"
+        ></a-plane>
+      </a-entity>
+    </a-scene>
 
     <script>
-      const arRoot = document.getElementById("arRoot");
-      const cameraFeed = document.getElementById("cameraFeed");
+      const videoEl = document.querySelector("#arVideo");
+      const targetEl = document.querySelector("#target");
 
-      // iPhoneの背面カメラを起動して、HTML videoに流す
-      async function startCamera() {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false
-        });
-        cameraFeed.srcObject = stream;
-        await cameraFeed.play();
-      }
-
-      // カメラが起動してからMindARを生成する（背景黒問題を回避しつつ安定化）
-      function mountARScene() {
-        arRoot.innerHTML = `
-          <a-scene
-            mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes; filterMinCF: 0.001; filterBeta: 0.01;"
-            embedded
-            renderer="colorManagement: true; physicallyCorrectLights: true;"
-            color-space="sRGB"
-            vr-mode-ui="enabled: false"
-            device-orientation-permission-ui="enabled: true"
-          >
-            <a-assets>
-              <video
-                id="arVideo"
-                src="./demo.mp4"
-                preload="auto"
-                loop
-                playsinline
-                webkit-playsinline
-                crossorigin="anonymous"
-              ></video>
-            </a-assets>
-
-            <!-- ここはARの投影用カメラ。背景映像はHTML側で出すのでOK -->
-            <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-            <a-entity id="target" mindar-image-target="targetIndex: 0">
-              <!-- 9:16（縦）固定 -->
-              <a-plane
-                position="0 0 0.01"
-                width="0.5625"
-                height="1.0"
-                material="shader: flat; src: #arVideo; transparent: true;"
-              ></a-plane>
-            </a-entity>
-          </a-scene>
-        `;
-
-        // 動画の再生制御（iOS対策含む）
-        const videoEl = () => document.querySelector("#arVideo");
-        const targetEl = () => document.querySelector("#target");
-
-        const unlock = async () => {
-          try {
-            videoEl().muted = true;
-            await videoEl().play();
-            videoEl().pause();
-            videoEl().currentTime = 0;
-          } catch (e) {}
-        };
-        window.addEventListener("touchend", unlock, { once: true });
-        window.addEventListener("click", unlock, { once: true });
-
-        // targetFound / targetLost は scene生成後に取れるので少し待つ
-        const wait = setInterval(() => {
-          const t = targetEl();
-          const v = videoEl();
-          if (!t || !v) return;
-
-          clearInterval(wait);
-
-          t.addEventListener("targetFound", async () => {
-            try {
-              v.muted = true;
-              await v.play();
-            } catch (e) {}
-          });
-
-          t.addEventListener("targetLost", () => {
-            try { v.pause(); } catch (e) {}
-          });
-        }, 100);
-      }
-
-      // 実行
-      (async () => {
+      const unlock = async () => {
         try {
-          await startCamera();
-          mountARScene();
-        } catch (e) {
-          alert("カメラ起動に失敗しました。Safariでカメラ許可がONか確認してください。");
-          console.error(e);
-        }
-      })();
+          videoEl.muted = true;
+          await videoEl.play();
+          videoEl.pause();
+          videoEl.currentTime = 0;
+        } catch (e) {}
+      };
+      window.addEventListener("touchend", unlock, { once: true });
+      window.addEventListener("click", unlock, { once: true });
+
+      targetEl.addEventListener("targetFound", async () => {
+        try {
+          videoEl.muted = true;
+          await videoEl.play();
+        } catch (e) {}
+      });
+
+      targetEl.addEventListener("targetLost", () => {
+        try { videoEl.pause(); } catch (e) {}
+      });
     </script>
   </body>
 </html>
