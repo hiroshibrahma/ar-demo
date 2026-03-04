@@ -1,172 +1,216 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>NAZE AR Demo</title>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NAZE AR Demo</title>
 
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+<script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-    <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background:#000; }
-      .hint {
-        position: fixed; left: 0; right: 0; bottom: 0;
-        padding: 12px 14px;
-        font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-        color: #fff; background: rgba(0,0,0,.55);
-        text-align: center; z-index: 10;
-      }
-      .top {
-        position: fixed; left: 0; right: 0; top: 0;
-        padding: 10px 12px;
-        font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-        color: #fff; background: rgba(0,0,0,.35);
-        text-align: center; z-index: 10;
-        pointer-events: none;
-      }
-    </style>
-  </head>
+<style>
+html,body{
+margin:0;
+overflow:hidden;
+background:#000;
+}
 
-  <body>
-    <div class="top">NAZE AR Demo</div>
-    <div class="hint">カメラ許可 → アクキーを映すとキャラが飛び出して、そのままアクションが始まります</div>
+.top{
+position:fixed;
+top:0;
+left:0;
+right:0;
+color:#fff;
+padding:10px;
+text-align:center;
+background:rgba(0,0,0,.4);
+z-index:10;
+}
 
-    <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes; filterMinCF: 0.001; filterBeta: 0.01;"
-      embedded
-      renderer="colorManagement: true; physicallyCorrectLights: true;"
-      color-space="sRGB"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: true"
-    >
-      <a-assets>
-        <!-- 背景付きアクション動画 -->
-        <video
-          id="arVideo"
-          src="./demo.mp4"
-          preload="auto"
-          loop
-          playsinline
-          webkit-playsinline
-          crossorigin="anonymous"
-        ></video>
+.hint{
+position:fixed;
+bottom:0;
+left:0;
+right:0;
+color:#fff;
+padding:10px;
+text-align:center;
+background:rgba(0,0,0,.5);
+z-index:10;
+}
+</style>
+</head>
 
-        <!-- 飛び出し用：キャラ透過PNG（リポジトリ直下に character.png を置く） -->
-        <img id="charImg" src="./character.png" crossorigin="anonymous" />
-      </a-assets>
+<body>
 
-      <a-camera mindar-image-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+<div class="top">NAZE AR Demo</div>
+<div class="hint">アクキーを映すとキャラが飛び出します</div>
 
-      <a-entity id="target" mindar-image-target="targetIndex: 0">
-        <!-- 1) 飛び出しキャラ（最初は非表示） -->
-        <a-plane
-          id="charPlane"
-          visible="false"
-          position="0 0 0.02"
-          width="0.8"
-          height="0.8"
-          material="shader: flat; src: #charImg; transparent: true; alphaTest: 0.1; opacity: 1;"
-        ></a-plane>
+<a-scene
+mindar-image="imageTargetSrc: ./targets.mind; autoStart: true;"
+embedded
+vr-mode-ui="enabled:false"
+device-orientation-permission-ui="enabled:true"
+renderer="colorManagement:true; physicallyCorrectLights:true"
+>
 
-        <!-- 2) 背景付き動画（最初は非表示＆透明） -->
-        <a-plane
-          id="videoPlane"
-          visible="false"
-          position="0 0 0.01"
-          width="0.5625"
-          height="1.0"
-          material="shader: flat; src: #arVideo; transparent: true; opacity: 0;"
-        ></a-plane>
-      </a-entity>
-    </a-scene>
+<a-assets>
 
-    <script>
-      const videoEl = document.querySelector("#arVideo");
-      const targetEl = document.querySelector("#target");
-      const charPlane = document.querySelector("#charPlane");
-      const videoPlane = document.querySelector("#videoPlane");
+<video
+id="arVideo"
+src="./demo.mp4"
+loop
+preload="auto"
+playsinline
+webkit-playsinline
+crossorigin="anonymous">
+</video>
 
-      // iOS: ユーザー操作で動画再生権限をアンロック
-      const unlock = async () => {
-        try {
-          videoEl.muted = true;
-          await videoEl.play();
-          videoEl.pause();
-          videoEl.currentTime = 0;
-        } catch (e) {}
-      };
-      window.addEventListener("touchend", unlock, { once: true });
-      window.addEventListener("click", unlock, { once: true });
+<img id="charImg" src="./character.png">
 
-      const resetVisuals = () => {
-        // キャラ
-        charPlane.setAttribute("visible", "false");
-        charPlane.setAttribute("scale", "1 1 1");
-        charPlane.setAttribute("position", "0 0 0.02");
-        charPlane.setAttribute("material", "opacity: 1;");
+</a-assets>
 
-        // 動画
-        videoPlane.setAttribute("visible", "false");
-        videoPlane.setAttribute("material", "opacity: 0;");
-      };
+<a-camera mindar-image-camera position="0 0 0"></a-camera>
 
-      const popCharacterThenStartVideo = async () => {
-        // 1) キャラ飛び出し
-        charPlane.setAttribute("visible", "true");
-        charPlane.setAttribute("scale", "0.01 0.01 0.01");
-        charPlane.setAttribute("position", "0 0 0.02");
+<a-entity id="target" mindar-image-target="targetIndex:0">
 
-        // アニメ（スケール＆前に出る）
-        charPlane.setAttribute("animation__s1",
-          "property: scale; to: 1.2 1.2 1.2; dur: 240; easing: easeOutBack");
-        charPlane.setAttribute("animation__p1",
-          "property: position; to: 0 0 0.08; dur: 240; easing: easeOutQuad");
+<!-- キャラ -->
+<a-plane
+id="charPlane"
+visible="false"
+position="0 0 0.02"
+width="0.8"
+height="0.8"
+material="shader:flat; src:#charImg; transparent:true">
+</a-plane>
 
-        // 少し戻して安定（バウンス）
-        setTimeout(() => {
-          charPlane.setAttribute("animation__s2",
-            "property: scale; to: 1 1 1; dur: 160; easing: easeOutQuad");
-          charPlane.setAttribute("animation__p2",
-            "property: position; to: 0 0 0.06; dur: 160; easing: easeOutQuad");
-        }, 250);
+<!-- 動画 -->
+<a-plane
+id="videoPlane"
+visible="false"
+position="0 0 0.01"
+width="0.5625"
+height="1"
+material="shader:flat; src:#arVideo; transparent:true; opacity:0">
+</a-plane>
 
-        // 2) 0.6秒後に動画を開始＆フェードイン
-        setTimeout(async () => {
-          videoPlane.setAttribute("visible", "true");
-          try {
-            videoEl.muted = true; // 音無しの方が安定
-            await videoEl.play();
-          } catch (e) {}
+<!-- スパークル -->
+<a-entity id="sparkles" visible="false" position="0 0 0.08">
 
-          // 動画フェードイン
-          videoPlane.setAttribute("animation__vIn",
-            "property: material.opacity; to: 1; dur: 220; easing: easeOutQuad");
+<a-plane class="sp" position="0 0 0" width="0.06" height="0.06" material="shader:flat; color:#fff; transparent:true; opacity:0"></a-plane>
 
-          // キャラはフェードアウトして消す（動画に切り替わった感）
-          charPlane.setAttribute("animation__cOut",
-            "property: material.opacity; to: 0; dur: 180; easing: easeOutQuad");
+<a-plane class="sp" position="0.08 0.02 0" width="0.05" height="0.05" material="shader:flat; color:#fff; transparent:true; opacity:0"></a-plane>
 
-          setTimeout(() => {
-            charPlane.setAttribute("visible", "false");
-            charPlane.setAttribute("material", "opacity: 1;");
-          }, 200);
+<a-plane class="sp" position="-0.08 0.02 0" width="0.05" height="0.05" material="shader:flat; color:#fff; transparent:true; opacity:0"></a-plane>
 
-        }, 600);
-      };
+<a-plane class="sp" position="0.05 0.1 0" width="0.05" height="0.05" material="shader:flat; color:#fff; transparent:true; opacity:0"></a-plane>
 
-      targetEl.addEventListener("targetFound", async () => {
-        resetVisuals();
-        popCharacterThenStartVideo();
-      });
+<a-plane class="sp" position="-0.05 -0.1 0" width="0.05" height="0.05" material="shader:flat; color:#fff; transparent:true; opacity:0"></a-plane>
 
-      targetEl.addEventListener("targetLost", () => {
-        try { videoEl.pause(); } catch (e) {}
-        resetVisuals();
-      });
+<a-plane class="sp" position="0.1 -0.05 0" width="0.05" height="0.05" material="shader:flat; color:#fff; transparent:true; opacity:0"></a-plane>
 
-      // 初期化
-      resetVisuals();
-    </script>
-  </body>
+<a-plane class="sp" position="-0.1 -0.05 0" width="0.05" height="0.05" material="shader:flat; color:#fff; transparent:true; opacity:0"></a-plane>
+
+<a-plane class="sp" position="0 0.12 0" width="0.05" height="0.05" material="shader:flat; color:#fff; transparent:true; opacity:0"></a-plane>
+
+</a-entity>
+
+</a-entity>
+
+</a-scene>
+
+<script>
+
+const videoEl = document.querySelector("#arVideo")
+const target = document.querySelector("#target")
+const charPlane = document.querySelector("#charPlane")
+const videoPlane = document.querySelector("#videoPlane")
+const sparkles = document.querySelector("#sparkles")
+
+function resetVisuals(){
+
+charPlane.setAttribute("visible",false)
+
+videoPlane.setAttribute("visible",false)
+videoPlane.setAttribute("material","opacity:0")
+
+sparkles.setAttribute("visible",false)
+
+}
+
+function playSparkles(){
+
+const sps = sparkles.querySelectorAll(".sp")
+
+sparkles.setAttribute("visible",true)
+
+sps.forEach((el,i)=>{
+
+setTimeout(()=>{
+
+el.setAttribute("animation__fadein",
+"property:material.opacity;to:1;dur:100")
+
+el.setAttribute("animation__fadeout",
+"property:material.opacity;to:0;delay:120;dur:200")
+
+el.setAttribute("animation__scale",
+"property:scale;to:1.5 1.5 1.5;dur:200")
+
+},i*20)
+
+})
+
+setTimeout(()=>{
+sparkles.setAttribute("visible",false)
+},500)
+
+}
+
+function startExperience(){
+
+playSparkles()
+
+charPlane.setAttribute("visible",true)
+charPlane.setAttribute("scale","0.01 0.01 0.01")
+
+charPlane.setAttribute("animation__scale",
+"property:scale;to:1 1 1;dur:300;easing:easeOutBack")
+
+setTimeout(()=>{
+
+videoPlane.setAttribute("visible",true)
+
+videoPlane.setAttribute("animation__fade",
+"property:material.opacity;to:1;dur:450")
+
+videoEl.muted=true
+videoEl.play()
+
+charPlane.setAttribute("animation__fade",
+"property:material.opacity;to:0;dur:300")
+
+},600)
+
+}
+
+target.addEventListener("targetFound",()=>{
+
+resetVisuals()
+
+startExperience()
+
+})
+
+target.addEventListener("targetLost",()=>{
+
+videoEl.pause()
+
+resetVisuals()
+
+})
+
+</script>
+
+</body>
 </html>
