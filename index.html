@@ -5,32 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>NAZE AR Demo</title>
 
-    <!-- A-Frame -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <!-- MindAR (A-Frame integration) -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background:#000; }
       .hint {
-        position: fixed;
-        left: 0; right: 0; bottom: 0;
+        position: fixed; left: 0; right: 0; bottom: 0;
         padding: 12px 14px;
         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-        color: #fff;
-        background: rgba(0,0,0,.55);
-        text-align: center;
-        z-index: 10;
+        color: #fff; background: rgba(0,0,0,.55);
+        text-align: center; z-index: 10;
       }
       .top {
-        position: fixed;
-        left: 0; right: 0; top: 0;
+        position: fixed; left: 0; right: 0; top: 0;
         padding: 10px 12px;
         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-        color: #fff;
-        background: rgba(0,0,0,.35);
-        text-align: center;
-        z-index: 10;
+        color: #fff; background: rgba(0,0,0,.35);
+        text-align: center; z-index: 10;
         pointer-events: none;
       }
     </style>
@@ -38,19 +30,16 @@
 
   <body>
     <div class="top">NAZE AR Demo</div>
-    <div class="hint">カメラ許可 → アクキーの絵柄を映すと、現実映像の上に動画が重なって再生されます</div>
+    <div class="hint">カメラ許可 → アクキーを映すと動画が重なって再生されます（iPhoneは最初に一度タップ）</div>
 
     <a-scene
       mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes;"
       embedded
-      renderer="colorManagement: true; physicallyCorrectLights: true;"
+      renderer="colorManagement: true; physicallyCorrectLights: true"
       color-space="sRGB"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
     >
-      <!-- カメラ映像を背景にする -->
-      <a-entity mindar-image-camera></a-entity>
-
       <a-assets>
         <video
           id="arVideo"
@@ -63,17 +52,21 @@
         ></video>
       </a-assets>
 
-      <!-- ターゲット0番（targets.mind が1枚ならこれでOK） -->
+      <!-- ここが重要：余計なパラメータなしで mindar-image-camera を付ける -->
+      <a-camera
+        position="0 0 0"
+        look-controls="enabled: false"
+        mindar-image-camera
+      ></a-camera>
+
       <a-entity id="target" mindar-image-target="targetIndex: 0">
-        <!-- 9:16縦動画を想定（必要なら数値は後で微調整） -->
-        <a-video
-          id="videoPlane"
-          src="#arVideo"
+        <!-- 9:16想定（縦動画）。必要なら後で詰める -->
+        <a-plane
           position="0 0 0.01"
-          width="0.6"
-          height="1.0667"
-          rotation="0 0 0"
-        ></a-video>
+          width="0.5625"
+          height="1.0"
+          material="shader: flat; src: #arVideo; transparent: true;"
+        ></a-plane>
       </a-entity>
     </a-scene>
 
@@ -81,30 +74,23 @@
       const videoEl = document.querySelector("#arVideo");
       const targetEl = document.querySelector("#target");
 
-      // iOS対策：最初のユーザー操作が来たら一度だけ再生許可を取りにいく
+      // iOS: タップで再生権限を解除（ミュートで通しやすくする）
       const unlock = async () => {
         try {
-          videoEl.muted = true;       // iOSはmuteなら再生通りやすい
+          videoEl.muted = true;
           await videoEl.play();
           videoEl.pause();
           videoEl.currentTime = 0;
-        } catch (e) {
-          // ここで失敗しても、後でtargetFound時に再トライする
-        }
-        window.removeEventListener("touchend", unlock);
-        window.removeEventListener("click", unlock);
+        } catch (e) {}
       };
       window.addEventListener("touchend", unlock, { once: true });
       window.addEventListener("click", unlock, { once: true });
 
-      // ターゲットを認識したら再生、見失ったら停止
       targetEl.addEventListener("targetFound", async () => {
         try {
-          videoEl.muted = false; // 音を出したいなら false（音不要なら true のままでもOK）
+          videoEl.muted = true; // 音いらないならこれが一番安定
           await videoEl.play();
-        } catch (e) {
-          // iOSでまだブロックされる場合は、画面を一回タップしてから再度認識させる
-        }
+        } catch (e) {}
       });
 
       targetEl.addEventListener("targetLost", () => {
