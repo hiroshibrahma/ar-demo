@@ -7,32 +7,50 @@
 
     <!-- A-Frame -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <!-- MindAR (A-Frame) -->
+    <!-- MindAR (A-Frame integration) -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background:#000; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
       .hint {
-        position: fixed; left: 0; right: 0; bottom: 0;
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
         padding: 12px 14px;
         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-        color: #fff; background: rgba(0,0,0,.55);
+        color: #fff;
+        background: rgba(0,0,0,.55);
         text-align: center;
         z-index: 10;
+      }
+      .top {
+        position: fixed;
+        left: 0; right: 0; top: 0;
+        padding: 10px 12px;
+        font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+        color: #fff;
+        background: rgba(0,0,0,.35);
+        text-align: center;
+        z-index: 10;
+        pointer-events: none;
       }
     </style>
   </head>
 
   <body>
-    <div class="hint">カメラ許可 → キーホルダーを映すと動画が重なって再生されます</div>
+    <div class="top">NAZE AR Demo</div>
+    <div class="hint">カメラ許可 → アクキーの絵柄を映すと、現実映像の上に動画が重なって再生されます</div>
 
     <a-scene
       mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes;"
+      embedded
+      renderer="colorManagement: true; physicallyCorrectLights: true;"
       color-space="sRGB"
-      renderer="colorManagement: true, physicallyCorrectLights: true"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
     >
+      <!-- カメラ映像を背景にする -->
+      <a-entity mindar-image-camera></a-entity>
+
       <a-assets>
         <video
           id="arVideo"
@@ -45,31 +63,52 @@
         ></video>
       </a-assets>
 
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-      <a-entity mindar-image-target="targetIndex: 0">
+      <!-- ターゲット0番（targets.mind が1枚ならこれでOK） -->
+      <a-entity id="target" mindar-image-target="targetIndex: 0">
+        <!-- 9:16縦動画を想定（必要なら数値は後で微調整） -->
         <a-video
+          id="videoPlane"
           src="#arVideo"
           position="0 0 0.01"
-          width="1.0"
-          height="0.5625"
+          width="0.6"
+          height="1.0667"
+          rotation="0 0 0"
         ></a-video>
       </a-entity>
     </a-scene>
 
     <script>
-      // iOSの自動再生対策：最初のタップ後に再生を試みる
-      const v = document.querySelector("#arVideo");
-      const sceneEl = document.querySelector("a-scene");
+      const videoEl = document.querySelector("#arVideo");
+      const targetEl = document.querySelector("#target");
 
-      sceneEl.addEventListener("loaded", () => {
-        const tryPlay = async () => {
-          try { await v.play(); } catch (e) {}
-          window.removeEventListener("touchend", tryPlay);
-          window.removeEventListener("click", tryPlay);
-        };
-        window.addEventListener("touchend", tryPlay, { once: true });
-        window.addEventListener("click", tryPlay, { once: true });
+      // iOS対策：最初のユーザー操作が来たら一度だけ再生許可を取りにいく
+      const unlock = async () => {
+        try {
+          videoEl.muted = true;       // iOSはmuteなら再生通りやすい
+          await videoEl.play();
+          videoEl.pause();
+          videoEl.currentTime = 0;
+        } catch (e) {
+          // ここで失敗しても、後でtargetFound時に再トライする
+        }
+        window.removeEventListener("touchend", unlock);
+        window.removeEventListener("click", unlock);
+      };
+      window.addEventListener("touchend", unlock, { once: true });
+      window.addEventListener("click", unlock, { once: true });
+
+      // ターゲットを認識したら再生、見失ったら停止
+      targetEl.addEventListener("targetFound", async () => {
+        try {
+          videoEl.muted = false; // 音を出したいなら false（音不要なら true のままでもOK）
+          await videoEl.play();
+        } catch (e) {
+          // iOSでまだブロックされる場合は、画面を一回タップしてから再度認識させる
+        }
+      });
+
+      targetEl.addEventListener("targetLost", () => {
+        try { videoEl.pause(); } catch (e) {}
       });
     </script>
   </body>
