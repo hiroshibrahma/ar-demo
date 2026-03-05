@@ -221,7 +221,6 @@
       charMesh.visible = false;
       charMesh.position.set(0, 0.06, 0.05);
       charMesh.scale.set(0.01, 0.01, 0.01);
-      anchor.group.add(charMesh);
 
       // 動画mesh
       const videoTex = new THREE.VideoTexture(video);
@@ -235,6 +234,7 @@
       videoMesh.visible = false;
       videoMesh.position.set(0, 0, 0.01);
       anchor.group.add(videoMesh);
+      anchor.group.add(charMesh);
 
       const sparkles = createSparkles(anchor.group);
       sparkles.forEach(s => { s.visible = false; });
