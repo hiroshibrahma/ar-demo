@@ -72,8 +72,10 @@
       position: fixed;
       inset: 0;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 16px;
       background: rgba(0,0,0,.7);
       z-index: 30;
     }
@@ -87,6 +89,14 @@
       cursor: pointer;
       user-select: none;
       -webkit-tap-highlight-color: transparent;
+    }
+    #tap-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    #lib-status {
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      color: rgba(255,255,255,.6);
     }
     #status-msg {
       position: fixed;
@@ -111,9 +121,10 @@
   <div id="ar-container"></div>
   <div class="ui-top">NAZE AR Demo</div>
   <div class="ui-bottom">アクリルキーホルダーをカメラに向けてください</div>
-  <div id="status-msg">初期化中…</div>
+  <div id="status-msg" class="hidden"></div>
   <div id="tap-overlay">
-    <button id="tap-btn">タップして AR を開始</button>
+    <div id="lib-status">ライブラリ読み込み中…</div>
+    <button id="tap-btn" disabled>しばらくお待ちください</button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
@@ -127,21 +138,49 @@
     const log = (...args) => console.log("[AR]", ...args);
     const err = (...args) => console.error("[AR]", ...args);
 
+    const tapBtn   = $("#tap-btn");
+    const libStatus = $("#lib-status");
+
     const setStatus = (msg) => {
       const el = $("#status-msg");
       if (el) { el.textContent = msg; el.classList.remove("hidden"); }
       log(msg);
     };
-    const hideStatus = () => {
-      const el = $("#status-msg");
-      if (el) el.classList.add("hidden");
-    };
+    const hideStatus = () => $("#status-msg")?.classList.add("hidden");
+
     const fatalAlert = (where, e) => {
       const msg = `[${where}]\n${e?.message ?? String(e)}`;
       err(msg, e);
       setStatus("❌ " + msg);
       if (e?.stack) console.error(e.stack);
     };
+
+    // ─────────────────────────────────────────
+    // ライブラリ読み込み待ち（ポーリング）
+    // THREE と MINDAR の両方が揃うまで待つ
+    // ─────────────────────────────────────────
+    function waitForLibs(timeoutMs = 20000) {
+      return new Promise((res, rej) => {
+        const start = Date.now();
+        const check = () => {
+          const hasThree  = !!window.THREE;
+          const hasMindar = !!window.MINDAR?.IMAGE?.MindARThree;
+
+          if (!hasThree)  libStatus.textContent = "THREE.js 読み込み中…";
+          else if (!hasMindar) libStatus.textContent = "MindAR 読み込み中…";
+
+          if (hasThree && hasMindar) {
+            log("libs ready: THREE", THREE.REVISION);
+            return res();
+          }
+          if (Date.now() - start > timeoutMs) {
+            return rej(new Error(`ライブラリ読み込みタイムアウト (THREE:${hasThree}, MINDAR:${hasMindar})`));
+          }
+          setTimeout(check, 200);
+        };
+        check();
+      });
+    }
 
     const waitImageLoad = (img) => new Promise((res, rej) => {
       if (img.complete && img.naturalWidth > 0) return res();
@@ -154,12 +193,10 @@
       v.onerror = () => rej(new Error("demo.mp4 メタデータ読み込み失敗"));
     });
 
+    // アセット事前ロード開始（タップ前から）
     const video = Object.assign(document.createElement("video"), {
       src: "./demo.mp4",
-      loop: true,
-      muted: true,
-      playsInline: true,
-      preload: "auto",
+      loop: true, muted: true, playsInline: true, preload: "auto",
     });
     video.setAttribute("playsinline", "");
     video.setAttribute("webkit-playsinline", "");
@@ -173,6 +210,21 @@
     };
     window.addEventListener("resize", applySize);
     window.addEventListener("orientationchange", () => setTimeout(applySize, 300));
+
+    // ─────────────────────────────────────────
+    // ライブラリ読み込み完了後にボタンを有効化
+    // ─────────────────────────────────────────
+    waitForLibs().then(() => {
+      libStatus.textContent = "準備完了！";
+      tapBtn.textContent = "タップして AR を開始";
+      tapBtn.disabled = false;
+      tapBtn.addEventListener("click", boot, { once: true });
+      // touchend も登録（iOS対応）
+      tapBtn.addEventListener("touchend", (e) => { e.preventDefault(); boot(); }, { once: true });
+    }).catch((e) => {
+      libStatus.textContent = "❌ " + e.message;
+      tapBtn.textContent = "読み込み失敗（リロードしてください）";
+    });
 
     function createSparkles(group) {
       const sparkles = [];
@@ -207,12 +259,9 @@
     }
 
     async function main() {
-      setStatus("ライブラリ確認中…");
-      if (!window.THREE) throw new Error("three.min.js が読み込まれていません");
-      if (!window.MINDAR?.IMAGE?.MindARThree) throw new Error("mindar-image-three が読み込まれていません");
-
       setStatus("アセット読み込み中…");
       await Promise.all([waitImageLoad(charImg), waitVideoMeta(video)]);
+      log("assets ready");
 
       setStatus("MindAR 初期化中…");
       const { MindARThree } = window.MINDAR.IMAGE;
@@ -269,7 +318,7 @@
         log("✅ targetFound");
         setStatus("認識！");
         setTimeout(hideStatus, 1500);
-        video.play().catch(e => err("video.play() failed:", e));
+        video.play().catch(e => err("video.play():", e));
         charMesh.visible = true;
         anim.charAppearing = true;
         anim.charScale = 0.01;
@@ -296,6 +345,7 @@
       await mindarThree.start();
       log("MindAR started");
 
+      // start()後にcanvasサイズを再適用（必須）
       applySize();
       setTimeout(applySize, 500);
       setTimeout(applySize, 1500);
@@ -318,15 +368,17 @@
       });
     }
 
+    let booted = false;
     async function boot() {
+      if (booted) return;
+      booted = true;
       $("#tap-overlay").classList.add("hidden");
+      // iOS video unlock
       try { await video.play(); video.pause(); video.currentTime = 0; } catch (e) {}
       try { await main(); }
       catch (e) { fatalAlert("main()", e); }
     }
 
-    window.addEventListener("click",    () => boot(), { once: true });
-    window.addEventListener("touchend", () => boot(), { once: true });
   })();
   </script>
 </body>
