@@ -2,209 +2,332 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>NAZE AR Demo (Three.js)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>NAZE AR Demo</title>
   <style>
-    html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#000; }
-    #container { position:fixed; inset:0; width:100vw; height:100vh; background:#000; }
-    #container canvas { position:fixed !important; inset:0 !important; width:100vw !important; height:100vh !important; display:block; }
-    .top{ position:fixed; left:0; right:0; top:0; padding:10px 12px; font:16px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial; color:#fff; background:rgba(0,0,0,.35); text-align:center; z-index:10; pointer-events:none;}
-    .hint{ position:fixed; left:0; right:0; bottom:0; padding:12px 14px; font:14px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial; color:#fff; background:rgba(0,0,0,.55); text-align:center; z-index:10;}
-    .tap{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); padding:12px 14px; font:14px/1.4 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial; color:#fff; background:rgba(0,0,0,.6); border-radius:10px; z-index:20; user-select:none;}
-    .hidden{ display:none; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html {
+      margin: 0; padding: 0;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      background: #000;
+    }
+    body {
+      margin: 0; padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    #ar-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    #ar-container video {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+      z-index: 0 !important;
+    }
+    #ar-container canvas {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 1 !important;
+    }
+    .ui-top {
+      position: fixed;
+      left: 0; right: 0; top: 0;
+      padding: 10px 12px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      font: 600 15px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      color: #fff;
+      background: rgba(0,0,0,.4);
+      text-align: center;
+      z-index: 20;
+      pointer-events: none;
+    }
+    .ui-bottom {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      padding: 12px 14px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      color: rgba(255,255,255,.8);
+      background: rgba(0,0,0,.5);
+      text-align: center;
+      z-index: 20;
+      pointer-events: none;
+    }
+    #tap-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.7);
+      z-index: 30;
+    }
+    #tap-btn {
+      padding: 16px 28px;
+      font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      color: #fff;
+      background: rgba(255,255,255,.15);
+      border: 1.5px solid rgba(255,255,255,.5);
+      border-radius: 12px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #status-msg {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      padding: 10px 16px;
+      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      color: #fff;
+      background: rgba(0,0,0,.6);
+      border-radius: 8px;
+      z-index: 20;
+      pointer-events: none;
+      white-space: pre-wrap;
+      text-align: center;
+      max-width: 90vw;
+    }
+    .hidden { display: none !important; }
   </style>
 </head>
-
 <body>
-  <div class="top">NAZE AR Demo</div>
-  <div class="hint">カメラ許可 → アクキーを映すと「ポン」→動画開始（最初に一度タップ）</div>
-  <div id="tap" class="tap">画面を1回タップして開始</div>
-  <div id="container"></div>
+  <div id="ar-container"></div>
+  <div class="ui-top">NAZE AR Demo</div>
+  <div class="ui-bottom">アクリルキーホルダーをカメラに向けてください</div>
+  <div id="status-msg">初期化中…</div>
+  <div id="tap-overlay">
+    <button id="tap-btn">タップして AR を開始</button>
+  </div>
 
-  <!-- Three.js (r150: MindAR相性対策) -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-  <!-- MindAR three -->
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
 
   <script>
-    const container = document.querySelector("#container");
-    const tap = document.querySelector("#tap");
+  (function () {
+    "use strict";
 
-    const log = (...args) => { console.log("[AR]", ...args); };
-    const fatal = (err) => {
-      console.error(err);
-      const msg = (err && (err.stack || err.message)) ? (err.stack || err.message) : String(err);
-      alert("AR初期化に失敗: \n\n" + msg);
+    const $ = (sel) => document.querySelector(sel);
+    const log = (...args) => console.log("[AR]", ...args);
+    const err = (...args) => console.error("[AR]", ...args);
+
+    const setStatus = (msg) => {
+      const el = $("#status-msg");
+      if (el) { el.textContent = msg; el.classList.remove("hidden"); }
+      log(msg);
+    };
+    const hideStatus = () => {
+      const el = $("#status-msg");
+      if (el) el.classList.add("hidden");
+    };
+    const fatalAlert = (where, e) => {
+      const msg = `[${where}]\n${e?.message ?? String(e)}`;
+      err(msg, e);
+      setStatus("❌ " + msg);
+      if (e?.stack) console.error(e.stack);
     };
 
-    // Assets
-    const video = document.createElement("video");
-    video.src = "./demo.mp4";
-    video.loop = true;
-    video.muted = true;
-    video.playsInline = true;
+    const waitImageLoad = (img) => new Promise((res, rej) => {
+      if (img.complete && img.naturalWidth > 0) return res();
+      img.onload  = res;
+      img.onerror = () => rej(new Error("character.png の読み込み失敗"));
+    });
+    const waitVideoMeta = (v) => new Promise((res, rej) => {
+      if (v.readyState >= 1) return res();
+      v.onloadedmetadata = res;
+      v.onerror = () => rej(new Error("demo.mp4 メタデータ読み込み失敗"));
+    });
+
+    const video = Object.assign(document.createElement("video"), {
+      src: "./demo.mp4",
+      loop: true,
+      muted: true,
+      playsInline: true,
+      preload: "auto",
+    });
     video.setAttribute("playsinline", "");
     video.setAttribute("webkit-playsinline", "");
-    video.preload = "auto";
-    video.crossOrigin = "anonymous";
 
     const charImg = new Image();
     charImg.src = "./character.png";
-    charImg.crossOrigin = "anonymous";
 
-    const waitImage = (img) => new Promise((res, rej) => {
-      if (img.complete && img.naturalWidth > 0) return res();
-      img.onload = () => res();
-      img.onerror = (e) => rej(new Error("Failed to load image: character.png"));
-    });
+    let _renderer = null;
+    const applySize = () => {
+      if (_renderer) _renderer.setSize(window.innerWidth, window.innerHeight, false);
+    };
+    window.addEventListener("resize", applySize);
+    window.addEventListener("orientationchange", () => setTimeout(applySize, 300));
 
-    const waitVideoMeta = (v) => new Promise((res, rej) => {
-      if (v.readyState >= 1) return res();
-      v.onloadedmetadata = () => res();
-      v.onerror = () => rej(new Error("Failed to load video metadata: demo.mp4"));
-    });
+    function createSparkles(group) {
+      const sparkles = [];
+      const geo = new THREE.PlaneGeometry(0.05, 0.05);
+      for (let i = 0; i < 8; i++) {
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0xffee44, transparent: true, opacity: 0,
+          depthWrite: false, side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        const angle = (i / 8) * Math.PI * 2;
+        const r = 0.3 + Math.random() * 0.15;
+        mesh.position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0.02);
+        group.add(mesh);
+        sparkles.push(mesh);
+      }
+      return sparkles;
+    }
+
+    function animateSparkles(sparkles) {
+      let startTime = null;
+      const duration = 1200;
+      const raf = (ts) => {
+        if (!startTime) startTime = ts;
+        const t = (ts - startTime) / duration;
+        const opacity = t < 0.5 ? t * 2 : 2 - t * 2;
+        sparkles.forEach(s => { s.material.opacity = Math.max(0, opacity); });
+        if (t < 1.0) requestAnimationFrame(raf);
+        else { startTime = null; requestAnimationFrame(raf); }
+      };
+      requestAnimationFrame(raf);
+    }
 
     async function main() {
-      log("THREE version:", (window.THREE && THREE.REVISION) || "missing");
-      log("MindAR global:", window.MINDAR ? "OK" : "MISSING");
+      setStatus("ライブラリ確認中…");
+      if (!window.THREE) throw new Error("three.min.js が読み込まれていません");
+      if (!window.MINDAR?.IMAGE?.MindARThree) throw new Error("mindar-image-three が読み込まれていません");
 
-      if (!window.MINDAR || !window.MINDAR.IMAGE || !window.MINDAR.IMAGE.MindARThree) {
-        throw new Error("MindAR (mindar-image-three) not loaded. window.MINDAR.IMAGE.MindARThree is missing.");
-      }
+      setStatus("アセット読み込み中…");
+      await Promise.all([waitImageLoad(charImg), waitVideoMeta(video)]);
 
-      // Ensure assets are loaded
-      await Promise.all([waitImage(charImg), waitVideoMeta(video)]);
-      log("Assets loaded");
-
-      // Optional: check targets.mind fetch early (404検出)
-      const mindUrl = "./targets.mind";
-      const r = await fetch(mindUrl, { cache: "no-store" });
-      if (!r.ok) throw new Error(`targets.mind fetch failed: ${r.status} ${r.statusText} (check file path/case)`);
-      log("targets.mind fetch OK");
-
+      setStatus("MindAR 初期化中…");
       const { MindARThree } = window.MINDAR.IMAGE;
+      const container = $("#ar-container");
 
       const mindarThree = new MindARThree({
         container,
         imageTargetSrc: "./targets.mind",
         uiLoading: "yes",
         uiScanning: "yes",
+        uiError: "yes",
         filterMinCF: 0.001,
-        filterBeta: 0.01
+        filterBeta: 0.001,
+        warmupTolerance: 5,
+        missTolerance: 5,
       });
 
       const { renderer, scene, camera } = mindarThree;
-
+      _renderer = renderer;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
 
       const anchor = mindarThree.addAnchor(0);
 
-      // Textures
       const charTex = new THREE.Texture(charImg);
       charTex.needsUpdate = true;
-
-      const charMat = new THREE.MeshBasicMaterial({ map: charTex, transparent: true, depthWrite: false, opacity: 1 });
-      const charMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), charMat);
+      const charMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.8, 0.8),
+        new THREE.MeshBasicMaterial({ map: charTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+      );
       charMesh.visible = false;
-      charMesh.position.set(0, 0, 0.02);
+      charMesh.position.set(0, 0.06, 0.05);
+      charMesh.scale.set(0.01, 0.01, 0.01);
       anchor.group.add(charMesh);
 
       const videoTex = new THREE.VideoTexture(video);
       videoTex.minFilter = THREE.LinearFilter;
       videoTex.magFilter = THREE.LinearFilter;
       videoTex.generateMipmaps = false;
-
-      const videoMat = new THREE.MeshBasicMaterial({ map: videoTex, transparent: true, opacity: 0, depthWrite: false });
-      const videoMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5625, 1.0), videoMat);
+      const videoMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.5625, 1.0),
+        new THREE.MeshBasicMaterial({ map: videoTex, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide })
+      );
       videoMesh.visible = false;
       videoMesh.position.set(0, 0, 0.01);
       anchor.group.add(videoMesh);
 
-      function reset() {
-        charMesh.visible = false;
-        charMesh.scale.set(1,1,1);
-        charMesh.position.set(0,0,0.02);
-        charMat.opacity = 1;
+      const sparkles = createSparkles(anchor.group);
+      sparkles.forEach(s => { s.visible = false; });
 
-        videoMesh.visible = false;
-        videoMat.opacity = 0;
-      }
+      let anim = { charAppearing: false, charScale: 0.01, videoFadingIn: false, videoOpacity: 0 };
 
-      function startSequence() {
-        reset();
+      anchor.onTargetFound = () => {
+        log("✅ targetFound");
+        setStatus("認識！");
+        setTimeout(hideStatus, 1500);
+        video.play().catch(e => err("video.play() failed:", e));
         charMesh.visible = true;
-        charMesh.scale.set(0.01,0.01,0.01);
+        anim.charAppearing = true;
+        anim.charScale = 0.01;
+        videoMesh.visible = true;
+        anim.videoFadingIn = true;
+        anim.videoOpacity = 0;
+        sparkles.forEach(s => { s.visible = true; });
+        animateSparkles(sparkles);
+      };
 
-        const t0 = performance.now();
-        const tick = () => {
-          const t = (performance.now() - t0) / 1000;
+      anchor.onTargetLost = () => {
+        log("❌ targetLost");
+        video.pause();
+        charMesh.visible = false;
+        videoMesh.visible = false;
+        videoMesh.material.opacity = 0;
+        charMesh.scale.set(0.01, 0.01, 0.01);
+        sparkles.forEach(s => { s.visible = false; });
+        anim.charAppearing = false;
+        anim.videoFadingIn = false;
+      };
 
-          // pop
-          if (t < 0.24) {
-            const k = t / 0.24;
-            const s = 0.01 + (1.2 - 0.01) * k;
-            charMesh.scale.set(s,s,s);
-            charMesh.position.z = 0.02 + (0.08 - 0.02) * k;
-          } else if (t < 0.41) {
-            const k = (t - 0.24) / 0.17;
-            const s = 1.2 + (1.0 - 1.2) * k;
-            charMesh.scale.set(s,s,s);
-            charMesh.position.z = 0.08 + (0.06 - 0.08) * k;
-          }
-
-          // video in
-          if (t > 0.60 && !videoMesh.visible) {
-            videoMesh.visible = true;
-            video.play().catch(()=>{});
-          }
-          if (videoMesh.visible) {
-            const k = Math.min(1, (t - 0.60) / 0.45);
-            videoMat.opacity = k;
-            const kc = Math.min(1, (t - 0.60) / 0.25);
-            charMat.opacity = 1 - kc;
-            if (kc >= 1) { charMesh.visible = false; charMat.opacity = 1; }
-          }
-
-          if (t < 1.2) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-      }
-
-      anchor.onTargetFound = () => { log("targetFound"); startSequence(); };
-      anchor.onTargetLost  = () => { log("targetLost"); video.pause(); reset(); };
-
-      log("Starting MindAR camera...");
+      setStatus("カメラ起動中…（許可ダイアログが出たら「許可」を選んでください）");
       await mindarThree.start();
-      log("MindAR started OK");
+      log("MindAR started");
 
-      renderer.setAnimationLoop(() => renderer.render(scene, camera));
+      applySize();
+      setTimeout(applySize, 500);
+      setTimeout(applySize, 1500);
 
-      window.addEventListener("resize", () => {
-        renderer.setSize(window.innerWidth, window.innerHeight);
+      setStatus("スキャン中…アクリルキーホルダーを映してください");
+
+      renderer.setAnimationLoop(() => {
+        if (anim.charAppearing) {
+          anim.charScale += (1.0 - anim.charScale) * 0.08;
+          const s = anim.charScale;
+          charMesh.scale.set(s, s, s);
+          if (Math.abs(s - 1.0) < 0.005) { charMesh.scale.set(1,1,1); anim.charAppearing = false; }
+        }
+        if (anim.videoFadingIn) {
+          anim.videoOpacity += (1.0 - anim.videoOpacity) * 0.05;
+          videoMesh.material.opacity = anim.videoOpacity;
+          if (anim.videoOpacity > 0.98) { videoMesh.material.opacity = 1.0; anim.videoFadingIn = false; }
+        }
+        renderer.render(scene, camera);
       });
     }
 
     async function boot() {
-      tap.classList.add("hidden");
-      try {
-        // unlock video playback
-        await video.play();
-        video.pause();
-        video.currentTime = 0;
-      } catch (e) {
-        log("video unlock failed (ok on iOS):", e);
-      }
-
-      try {
-        await main();
-      } catch (err) {
-        fatal(err);
-      }
+      $("#tap-overlay").classList.add("hidden");
+      try { await video.play(); video.pause(); video.currentTime = 0; } catch (e) {}
+      try { await main(); }
+      catch (e) { fatalAlert("main()", e); }
     }
 
-    window.addEventListener("click", boot, { once: true });
-    window.addEventListener("touchend", boot, { once: true });
+    window.addEventListener("click",    () => boot(), { once: true });
+    window.addEventListener("touchend", () => boot(), { once: true });
+  })();
   </script>
 </body>
 </html>
