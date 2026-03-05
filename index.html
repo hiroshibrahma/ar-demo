@@ -4,115 +4,86 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>NAZE AR Demo</title>
+
+  <!-- importmap: THREEとMindARをESモジュールとして解決 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+    }
+  }
+  </script>
+
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html {
       margin: 0; padding: 0;
-      height: 100vh;
-      height: 100dvh;
-      overflow: hidden;
-      background: #000;
+      height: 100vh; height: 100dvh;
+      overflow: hidden; background: #000;
     }
     body {
       margin: 0; padding: 0;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
+      height: 100%; overflow: hidden; background: #000;
     }
     #ar-container {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
+      position: fixed; inset: 0;
+      width: 100%; height: 100%;
+      overflow: hidden; background: #000;
     }
     #ar-container video {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover !important;
-      z-index: 0 !important;
+      position: fixed !important; top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important;
+      object-fit: cover !important; z-index: 0 !important;
     }
     #ar-container canvas {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      z-index: 1 !important;
+      position: fixed !important; top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important; z-index: 1 !important;
     }
     .ui-top {
-      position: fixed;
-      left: 0; right: 0; top: 0;
-      padding: 10px 12px;
-      padding-top: max(10px, env(safe-area-inset-top));
-      font: 600 15px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      color: #fff;
-      background: rgba(0,0,0,.4);
-      text-align: center;
-      z-index: 20;
-      pointer-events: none;
+      position: fixed; left: 0; right: 0; top: 0;
+      padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+      font: 600 15px/1.4 -apple-system, sans-serif;
+      color: #fff; background: rgba(0,0,0,.4);
+      text-align: center; z-index: 20; pointer-events: none;
     }
     .ui-bottom {
-      position: fixed;
-      left: 0; right: 0; bottom: 0;
-      padding: 12px 14px;
-      padding-bottom: max(12px, env(safe-area-inset-bottom));
-      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      color: rgba(255,255,255,.8);
-      background: rgba(0,0,0,.5);
-      text-align: center;
-      z-index: 20;
-      pointer-events: none;
+      position: fixed; left: 0; right: 0; bottom: 0;
+      padding: 12px 14px max(12px, env(safe-area-inset-bottom));
+      font: 13px/1.4 -apple-system, sans-serif;
+      color: rgba(255,255,255,.8); background: rgba(0,0,0,.5);
+      text-align: center; z-index: 20; pointer-events: none;
     }
     #tap-overlay {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      background: rgba(0,0,0,.7);
-      z-index: 30;
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+      background: rgba(0,0,0,.75); z-index: 30;
     }
     #tap-btn {
       padding: 16px 28px;
-      font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      color: #fff;
-      background: rgba(255,255,255,.15);
+      font: 600 16px/1 -apple-system, sans-serif;
+      color: #fff; background: rgba(255,255,255,.15);
       border: 1.5px solid rgba(255,255,255,.5);
-      border-radius: 12px;
-      cursor: pointer;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
+      border-radius: 12px; cursor: pointer;
+      user-select: none; -webkit-tap-highlight-color: transparent;
+      transition: opacity .2s;
     }
-    #tap-btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
+    #tap-btn:disabled { opacity: 0.35; cursor: default; }
     #lib-status {
-      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      color: rgba(255,255,255,.6);
+      font: 13px/1.4 -apple-system, sans-serif;
+      color: rgba(255,255,255,.55);
     }
     #status-msg {
-      position: fixed;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
+      position: fixed; left: 50%; top: 50%;
+      transform: translate(-50%,-50%);
       padding: 10px 16px;
-      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      color: #fff;
-      background: rgba(0,0,0,.6);
-      border-radius: 8px;
-      z-index: 20;
-      pointer-events: none;
-      white-space: pre-wrap;
-      text-align: center;
-      max-width: 90vw;
+      font: 14px/1.4 -apple-system, sans-serif;
+      color: #fff; background: rgba(0,0,0,.65);
+      border-radius: 8px; z-index: 20;
+      pointer-events: none; white-space: pre-wrap;
+      text-align: center; max-width: 88vw;
     }
     .hidden { display: none !important; }
   </style>
@@ -123,108 +94,69 @@
   <div class="ui-bottom">アクリルキーホルダーをカメラに向けてください</div>
   <div id="status-msg" class="hidden"></div>
   <div id="tap-overlay">
-    <div id="lib-status">ライブラリ読み込み中…</div>
+    <div id="lib-status">読み込み中…</div>
     <button id="tap-btn" disabled>しばらくお待ちください</button>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { MindARThree } from 'mindar-image-three';
 
-  <script>
-  (function () {
-    "use strict";
+    const $ = (s) => document.querySelector(s);
+    const log = (...a) => console.log('[AR]', ...a);
+    const err = (...a) => console.error('[AR]', ...a);
 
-    const $ = (sel) => document.querySelector(sel);
-    const log = (...args) => console.log("[AR]", ...args);
-    const err = (...args) => console.error("[AR]", ...args);
-
-    const tapBtn   = $("#tap-btn");
-    const libStatus = $("#lib-status");
+    const tapBtn    = $('#tap-btn');
+    const libStatus = $('#lib-status');
 
     const setStatus = (msg) => {
-      const el = $("#status-msg");
-      if (el) { el.textContent = msg; el.classList.remove("hidden"); }
+      const el = $('#status-msg');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.remove('hidden');
       log(msg);
     };
-    const hideStatus = () => $("#status-msg")?.classList.add("hidden");
-
+    const hideStatus = () => $('#status-msg')?.classList.add('hidden');
     const fatalAlert = (where, e) => {
-      const msg = `[${where}]\n${e?.message ?? String(e)}`;
+      const msg = '[' + where + ']\n' + (e?.message ?? String(e));
       err(msg, e);
-      setStatus("❌ " + msg);
-      if (e?.stack) console.error(e.stack);
+      setStatus('❌ ' + msg);
     };
 
-    // ─────────────────────────────────────────
-    // ライブラリ読み込み待ち（ポーリング）
-    // THREE と MINDAR の両方が揃うまで待つ
-    // ─────────────────────────────────────────
-    function waitForLibs(timeoutMs = 20000) {
-      return new Promise((res, rej) => {
-        const start = Date.now();
-        const check = () => {
-          const hasThree  = !!window.THREE;
-          const hasMindar = !!window.MINDAR?.IMAGE?.MindARThree;
-
-          if (!hasThree)  libStatus.textContent = "THREE.js 読み込み中…";
-          else if (!hasMindar) libStatus.textContent = "MindAR 読み込み中…";
-
-          if (hasThree && hasMindar) {
-            log("libs ready: THREE", THREE.REVISION);
-            return res();
-          }
-          if (Date.now() - start > timeoutMs) {
-            return rej(new Error(`ライブラリ読み込みタイムアウト (THREE:${hasThree}, MINDAR:${hasMindar})`));
-          }
-          setTimeout(check, 200);
-        };
-        check();
-      });
-    }
-
-    const waitImageLoad = (img) => new Promise((res, rej) => {
-      if (img.complete && img.naturalWidth > 0) return res();
-      img.onload  = res;
-      img.onerror = () => rej(new Error("character.png の読み込み失敗"));
+    // アセット事前ロード
+    const video = Object.assign(document.createElement('video'), {
+      src: './demo.mp4', loop: true, muted: true,
+      playsInline: true, preload: 'auto',
     });
-    const waitVideoMeta = (v) => new Promise((res, rej) => {
-      if (v.readyState >= 1) return res();
-      v.onloadedmetadata = res;
-      v.onerror = () => rej(new Error("demo.mp4 メタデータ読み込み失敗"));
-    });
-
-    // アセット事前ロード開始（タップ前から）
-    const video = Object.assign(document.createElement("video"), {
-      src: "./demo.mp4",
-      loop: true, muted: true, playsInline: true, preload: "auto",
-    });
-    video.setAttribute("playsinline", "");
-    video.setAttribute("webkit-playsinline", "");
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
 
     const charImg = new Image();
-    charImg.src = "./character.png";
+    charImg.src = './character.png';
+
+    const waitImg = (img) => new Promise((res, rej) => {
+      if (img.complete && img.naturalWidth > 0) return res();
+      img.onload = res;
+      img.onerror = () => rej(new Error('character.png 読み込み失敗'));
+    });
+    const waitVid = (v) => new Promise((res, rej) => {
+      if (v.readyState >= 1) return res();
+      v.onloadedmetadata = res;
+      v.onerror = () => rej(new Error('demo.mp4 読み込み失敗'));
+    });
 
     let _renderer = null;
     const applySize = () => {
       if (_renderer) _renderer.setSize(window.innerWidth, window.innerHeight, false);
     };
-    window.addEventListener("resize", applySize);
-    window.addEventListener("orientationchange", () => setTimeout(applySize, 300));
+    window.addEventListener('resize', applySize);
+    window.addEventListener('orientationchange', () => setTimeout(applySize, 300));
 
-    // ─────────────────────────────────────────
-    // ライブラリ読み込み完了後にボタンを有効化
-    // ─────────────────────────────────────────
-    waitForLibs().then(() => {
-      libStatus.textContent = "準備完了！";
-      tapBtn.textContent = "タップして AR を開始";
-      tapBtn.disabled = false;
-      tapBtn.addEventListener("click", boot, { once: true });
-      // touchend も登録（iOS対応）
-      tapBtn.addEventListener("touchend", (e) => { e.preventDefault(); boot(); }, { once: true });
-    }).catch((e) => {
-      libStatus.textContent = "❌ " + e.message;
-      tapBtn.textContent = "読み込み失敗（リロードしてください）";
-    });
+    // importmap経由なのでここに来た時点でTHREE/MindARThreeは確実にロード済み
+    log('THREE r' + THREE.REVISION);
+    libStatus.textContent = '準備完了！';
+    tapBtn.textContent = 'タップして AR を開始';
+    tapBtn.disabled = false;
 
     function createSparkles(group) {
       const sparkles = [];
@@ -235,9 +167,9 @@
           depthWrite: false, side: THREE.DoubleSide,
         });
         const mesh = new THREE.Mesh(geo, mat);
-        const angle = (i / 8) * Math.PI * 2;
+        const a = (i / 8) * Math.PI * 2;
         const r = 0.3 + Math.random() * 0.15;
-        mesh.position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0.02);
+        mesh.position.set(Math.cos(a) * r, Math.sin(a) * r, 0.02);
         group.add(mesh);
         sparkles.push(mesh);
       }
@@ -245,38 +177,31 @@
     }
 
     function animateSparkles(sparkles) {
-      let startTime = null;
-      const duration = 1200;
+      let t0 = null;
+      const dur = 1200;
       const raf = (ts) => {
-        if (!startTime) startTime = ts;
-        const t = (ts - startTime) / duration;
-        const opacity = t < 0.5 ? t * 2 : 2 - t * 2;
-        sparkles.forEach(s => { s.material.opacity = Math.max(0, opacity); });
-        if (t < 1.0) requestAnimationFrame(raf);
-        else { startTime = null; requestAnimationFrame(raf); }
+        if (!t0) t0 = ts;
+        const t = (ts - t0) / dur;
+        const op = t < 0.5 ? t * 2 : 2 - t * 2;
+        sparkles.forEach(s => { s.material.opacity = Math.max(0, op); });
+        if (t < 1) requestAnimationFrame(raf);
+        else { t0 = null; requestAnimationFrame(raf); }
       };
       requestAnimationFrame(raf);
     }
 
     async function main() {
-      setStatus("アセット読み込み中…");
-      await Promise.all([waitImageLoad(charImg), waitVideoMeta(video)]);
-      log("assets ready");
+      setStatus('アセット読み込み中…');
+      await Promise.all([waitImg(charImg), waitVid(video)]);
+      log('assets ready');
 
-      setStatus("MindAR 初期化中…");
-      const { MindARThree } = window.MINDAR.IMAGE;
-      const container = $("#ar-container");
-
+      setStatus('MindAR 初期化中…');
       const mindarThree = new MindARThree({
-        container,
-        imageTargetSrc: "./targets.mind",
-        uiLoading: "yes",
-        uiScanning: "yes",
-        uiError: "yes",
-        filterMinCF: 0.001,
-        filterBeta: 0.001,
-        warmupTolerance: 5,
-        missTolerance: 5,
+        container: $('#ar-container'),
+        imageTargetSrc: './targets.mind',
+        uiLoading: 'yes', uiScanning: 'yes', uiError: 'yes',
+        filterMinCF: 0.001, filterBeta: 0.001,
+        warmupTolerance: 5, missTolerance: 5,
       });
 
       const { renderer, scene, camera } = mindarThree;
@@ -286,6 +211,7 @@
 
       const anchor = mindarThree.addAnchor(0);
 
+      // キャラクターmesh
       const charTex = new THREE.Texture(charImg);
       charTex.needsUpdate = true;
       const charMesh = new THREE.Mesh(
@@ -297,6 +223,7 @@
       charMesh.scale.set(0.01, 0.01, 0.01);
       anchor.group.add(charMesh);
 
+      // 動画mesh
       const videoTex = new THREE.VideoTexture(video);
       videoTex.minFilter = THREE.LinearFilter;
       videoTex.magFilter = THREE.LinearFilter;
@@ -312,25 +239,23 @@
       const sparkles = createSparkles(anchor.group);
       sparkles.forEach(s => { s.visible = false; });
 
-      let anim = { charAppearing: false, charScale: 0.01, videoFadingIn: false, videoOpacity: 0 };
+      let anim = { charAppearing: false, charScale: 0.01, videoFading: false, videoOpacity: 0 };
 
       anchor.onTargetFound = () => {
-        log("✅ targetFound");
-        setStatus("認識！");
+        log('✅ targetFound');
+        setStatus('認識！');
         setTimeout(hideStatus, 1500);
-        video.play().catch(e => err("video.play():", e));
+        video.play().catch(e => err('play:', e));
         charMesh.visible = true;
-        anim.charAppearing = true;
-        anim.charScale = 0.01;
+        anim = { charAppearing: true, charScale: 0.01, videoFading: true, videoOpacity: 0 };
         videoMesh.visible = true;
-        anim.videoFadingIn = true;
-        anim.videoOpacity = 0;
+        videoMesh.material.opacity = 0;
         sparkles.forEach(s => { s.visible = true; });
         animateSparkles(sparkles);
       };
 
       anchor.onTargetLost = () => {
-        log("❌ targetLost");
+        log('❌ targetLost');
         video.pause();
         charMesh.visible = false;
         videoMesh.visible = false;
@@ -338,31 +263,31 @@
         charMesh.scale.set(0.01, 0.01, 0.01);
         sparkles.forEach(s => { s.visible = false; });
         anim.charAppearing = false;
-        anim.videoFadingIn = false;
+        anim.videoFading = false;
       };
 
-      setStatus("カメラ起動中…（許可ダイアログが出たら「許可」を選んでください）");
+      setStatus('カメラ起動中…（許可ダイアログが出たら「許可」を選んでください）');
       await mindarThree.start();
-      log("MindAR started");
+      log('started');
 
-      // start()後にcanvasサイズを再適用（必須）
+      // start()後にcanvasサイズ再適用（必須）
       applySize();
       setTimeout(applySize, 500);
       setTimeout(applySize, 1500);
 
-      setStatus("スキャン中…アクリルキーホルダーを映してください");
+      setStatus('スキャン中…アクリルキーホルダーを映してください');
 
       renderer.setAnimationLoop(() => {
         if (anim.charAppearing) {
-          anim.charScale += (1.0 - anim.charScale) * 0.08;
+          anim.charScale += (1 - anim.charScale) * 0.08;
           const s = anim.charScale;
           charMesh.scale.set(s, s, s);
-          if (Math.abs(s - 1.0) < 0.005) { charMesh.scale.set(1,1,1); anim.charAppearing = false; }
+          if (Math.abs(s - 1) < 0.005) { charMesh.scale.set(1,1,1); anim.charAppearing = false; }
         }
-        if (anim.videoFadingIn) {
-          anim.videoOpacity += (1.0 - anim.videoOpacity) * 0.05;
+        if (anim.videoFading) {
+          anim.videoOpacity += (1 - anim.videoOpacity) * 0.05;
           videoMesh.material.opacity = anim.videoOpacity;
-          if (anim.videoOpacity > 0.98) { videoMesh.material.opacity = 1.0; anim.videoFadingIn = false; }
+          if (anim.videoOpacity > 0.98) { videoMesh.material.opacity = 1; anim.videoFading = false; }
         }
         renderer.render(scene, camera);
       });
@@ -370,16 +295,14 @@
 
     let booted = false;
     async function boot() {
-      if (booted) return;
-      booted = true;
-      $("#tap-overlay").classList.add("hidden");
-      // iOS video unlock
-      try { await video.play(); video.pause(); video.currentTime = 0; } catch (e) {}
-      try { await main(); }
-      catch (e) { fatalAlert("main()", e); }
+      if (booted) return; booted = true;
+      $('#tap-overlay').classList.add('hidden');
+      try { await video.play(); video.pause(); video.currentTime = 0; } catch(e){}
+      try { await main(); } catch(e) { fatalAlert('main()', e); }
     }
 
-  })();
+    tapBtn.addEventListener('click', boot, { once: true });
+    tapBtn.addEventListener('touchend', (e) => { e.preventDefault(); boot(); }, { once: true });
   </script>
 </body>
 </html>
