@@ -102,18 +102,20 @@
       setStatus('❌ ' + msg);
     };
 
-    // 動画を事前ロード
-    const video = Object.assign(document.createElement('video'), {
-      src: './demo.mp4', loop: true, muted: true,
-      playsInline: true, preload: 'auto',
+    const VIDEO_SRCS = ['./demo.mp4', './demo2.mp4', './demo3.mp4'];
+    const videos = VIDEO_SRCS.map(src => {
+      const v = Object.assign(document.createElement('video'), {
+        src, loop: true, muted: true, playsInline: true, preload: 'auto',
+      });
+      v.setAttribute('playsinline', '');
+      v.setAttribute('webkit-playsinline', '');
+      return v;
     });
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
 
-    const waitVid = (v) => new Promise((res, rej) => {
+    const waitVid = (v) => new Promise((res) => {
       if (v.readyState >= 1) return res();
       v.onloadedmetadata = res;
-      v.onerror = () => rej(new Error('demo.mp4 読み込み失敗'));
+      v.onerror = res;
     });
 
     let _renderer = null;
@@ -130,8 +132,8 @@
 
     async function main() {
       setStatus('動画読み込み中…');
-      await waitVid(video);
-      log('video ready');
+      await Promise.all(videos.map(waitVid));
+      log('all videos ready');
 
       setStatus('MindAR 初期化中…');
       const mindarThree = new MindARThree({
@@ -147,42 +149,66 @@
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(window.innerWidth, window.innerHeight, false);
 
-      const anchor = mindarThree.addAnchor(0);
+      // 現在アクティブなトリガーのindex（-1=なし）
+      let activeIndex = -1;
 
-      // 動画mesh：トリガー画像を完全に覆う大きさ
-      const videoTex = new THREE.VideoTexture(video);
-      videoTex.minFilter = THREE.LinearFilter;
-      videoTex.magFilter = THREE.LinearFilter;
-      videoTex.generateMipmaps = false;
-      const videoMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.8, 1.8),
-        new THREE.MeshBasicMaterial({ map: videoTex, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide })
-      );
-      videoMesh.visible = false;
-      videoMesh.position.set(0, 0, 0.01);
-      anchor.group.add(videoMesh);
+      const anchors = videos.map((video, i) => {
+        const anchor = mindarThree.addAnchor(i);
 
-      let videoFading = false;
-      let videoOpacity = 0;
+        const videoTex = new THREE.VideoTexture(video);
+        videoTex.minFilter = THREE.LinearFilter;
+        videoTex.magFilter = THREE.LinearFilter;
+        videoTex.generateMipmaps = false;
 
-      anchor.onTargetFound = () => {
-        log('✅ targetFound');
-        setStatus('認識！');
-        setTimeout(hideStatus, 1500);
-        video.play().catch(e => err('play:', e));
-        videoMesh.visible = true;
-        videoFading = true;
-        videoOpacity = 0;
-        videoMesh.material.opacity = 0;
-      };
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.8, 1.8),
+          new THREE.MeshBasicMaterial({ map: videoTex, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide })
+        );
+        mesh.visible = false;
+        mesh.position.set(0, 0, 0.01);
+        anchor.group.add(mesh);
 
-      anchor.onTargetLost = () => {
-        log('❌ targetLost');
-        video.pause();
-        videoMesh.visible = false;
-        videoMesh.material.opacity = 0;
-        videoFading = false;
-      };
+        let fading = false;
+        let opacity = 0;
+
+        anchor.onTargetFound = () => {
+          // 他のトリガーがすでにアクティブなら無視
+          if (activeIndex !== -1 && activeIndex !== i) {
+            log('target' + i + ' ignored (target' + activeIndex + ' is active)');
+            return;
+          }
+          activeIndex = i;
+          log('✅ target' + i + ' found');
+          setStatus('認識！');
+          setTimeout(hideStatus, 1500);
+          video.play().catch(e => err('play' + i + ':', e));
+          mesh.visible = true;
+          fading = true;
+          opacity = 0;
+          mesh.material.opacity = 0;
+        };
+
+        anchor.onTargetLost = () => {
+          // 自分がアクティブだった場合だけ解放
+          if (activeIndex !== i) return;
+          activeIndex = -1;
+          log('❌ target' + i + ' lost');
+          video.pause();
+          video.currentTime = 0;
+          mesh.visible = false;
+          mesh.material.opacity = 0;
+          fading = false;
+          opacity = 0;
+        };
+
+        return {
+          mesh,
+          get fading() { return fading; },
+          set fading(v) { fading = v; },
+          get opacity() { return opacity; },
+          set opacity(v) { opacity = v; },
+        };
+      });
 
       setStatus('カメラ起動中…（許可ダイアログが出たら「許可」を選んでください）');
       await mindarThree.start();
@@ -195,11 +221,13 @@
       setStatus('スキャン中…アクリルキーホルダーを映してください');
 
       renderer.setAnimationLoop(() => {
-        if (videoFading) {
-          videoOpacity += (1 - videoOpacity) * 0.05;
-          videoMesh.material.opacity = videoOpacity;
-          if (videoOpacity > 0.98) { videoMesh.material.opacity = 1; videoFading = false; }
-        }
+        anchors.forEach(a => {
+          if (a.fading) {
+            a.opacity += (1 - a.opacity) * 0.05;
+            a.mesh.material.opacity = a.opacity;
+            if (a.opacity > 0.98) { a.mesh.material.opacity = 1; a.fading = false; }
+          }
+        });
         renderer.render(scene, camera);
       });
     }
@@ -208,7 +236,9 @@
     async function boot() {
       if (booted) return; booted = true;
       $('#tap-overlay').classList.add('hidden');
-      try { await video.play(); video.pause(); video.currentTime = 0; } catch(e){}
+      for (const v of videos) {
+        try { await v.play(); v.pause(); v.currentTime = 0; } catch(e) {}
+      }
       try { await main(); } catch(e) { fatalAlert('main()', e); }
     }
 
