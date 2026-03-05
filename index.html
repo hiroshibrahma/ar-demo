@@ -215,11 +215,11 @@
       const charTex = new THREE.Texture(charImg);
       charTex.needsUpdate = true;
       const charMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.8, 0.8),
+        new THREE.PlaneGeometry(0.3, 0.3),
         new THREE.MeshBasicMaterial({ map: charTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
       );
       charMesh.visible = false;
-      charMesh.position.set(0, 0.06, 0.05);
+      charMesh.position.set(0.35, -0.55, 0.05);
       charMesh.scale.set(0.01, 0.01, 0.01);
 
       // 動画mesh
